@@ -34,6 +34,7 @@ const WIN_SCREEN := preload("res://scripts/win_screen.gd")
 @export var bridge_capture: float = 2.0      # if shoved this far past a bridge edge (still in water), slide back onto the bridge instead of off it
 @export var bridge_arc_peak: float = 1.3     # visual height units rise to at a bridge's centre (tune to the deck)
 @export var bridge_arc_span: float = 2.75    # perpendicular half-span where the deck meets the banks (height 0)
+@export var enemy_start_elixir: float = 0.0      # enemy begins with this much (0 = ~9s behind the player's 3)
 @export var enemy_brain_interval: float = 0.6    # how often the enemy AI considers a purchase (sec)
 @export var enemy_barb_chance: float = 0.4       # P(barbarian) when the enemy buys at 3 elixir
 @export var enemy_wizard_chance: float = 0.3     # P(wizard); builder gets the remainder (~0.3)
@@ -41,7 +42,7 @@ const WIN_SCREEN := preload("res://scripts/win_screen.gd")
 @export var spawn_button_margin: float = 28.0    # spawn button inset from the screen corner (px)
 @export var spawn_cost: float = 2.0              # elixir cost per barbarian
 @export var wizard_spawn_cost: float = 3.0       # elixir cost per wizard (also the enemy's "wait for 3" gate)
-@export var builder_spawn_cost: float = 2.0      # elixir cost per player-spawned builder
+@export var builder_spawn_cost: float = 4.0      # elixir cost per builder
 
 const SPAWN_CARD_GAP := 48.0   # px gap between spawn cards (clears both glow halos)
 
@@ -490,19 +491,19 @@ func _build_spawn_cards() -> void:
 	var barb := SPAWN_CARD.new()
 	layer.add_child(barb)
 	_place_card(barb, 0)   # slot 0 = rightmost corner
-	barb.setup(spawn_button_size, barb_tex, spawn_cost, 1, drop_tex, _elixir, deploy,
+	barb.setup(spawn_button_size, barb_tex, spawn_cost, int(spawn_cost), drop_tex, _elixir, deploy,
 		{ "glb": UNIT_GLB, "scale": 1.3, "spawn_fn": spawn_one_at })
 
 	var wiz := SPAWN_CARD.new()
 	layer.add_child(wiz)
 	_place_card(wiz, 1)    # slot 1 = one step to the left
-	wiz.setup(spawn_button_size, wiz_tex, wizard_spawn_cost, 2, drop_tex, _elixir, deploy,
+	wiz.setup(spawn_button_size, wiz_tex, wizard_spawn_cost, int(wizard_spawn_cost), drop_tex, _elixir, deploy,
 		{ "glb": WIZARD_GLB, "scale": 1.3, "spawn_fn": spawn_one_wizard_at })
 
 	var builder := SPAWN_CARD.new()
 	layer.add_child(builder)
 	_place_card(builder, 2)   # slot 2 = leftmost
-	builder.setup(spawn_button_size, builder_tex, builder_spawn_cost, 2, drop_tex, _elixir, deploy,
+	builder.setup(spawn_button_size, builder_tex, builder_spawn_cost, int(builder_spawn_cost), drop_tex, _elixir, deploy,
 		{ "glb": BUILDER_GLB, "scale": 1.3, "spawn_fn": spawn_one_builder_at })
 
 # Pin a card to the bottom-right corner, stepping `slot` cards to the left.
@@ -659,6 +660,7 @@ func _setup_elixir() -> void:
 	# The enemy's mirror economy: identical elixir model (start/regen/max), no HUD.
 	# It regenerates on its own and is topped up by enemy pumps via add_elixir().
 	_enemy_elixir = ELIXIR.new()
+	_enemy_elixir.start_elixir = enemy_start_elixir   # head start: enemy begins behind the player's 3
 	add_child(_enemy_elixir)
 
 # Load a UI texture. Prefer the imported resource; fall back to reading the PNG
@@ -692,18 +694,20 @@ func _on_enemy_brain_tick() -> void:
 	if not (is_instance_valid(_enemy_base) and _enemy_base.alive):
 		return
 	if _enemy_elixir == null or _enemy_elixir.current < wizard_spawn_cost:
-		return   # bank up to 3 (the priciest unit), then it can afford any of them
-	# Pick a unit type — balanced so the enemy fields all kinds, not mostly barbarians.
+		return   # bank to 3 (affords a barb or wizard); banks further for a 4-cost builder
+	# Pick a unit type — balanced for variety. Only spawn if the roll is actually
+	# affordable, so e.g. a 4-cost builder rolled at 3 just banks toward 4 instead of
+	# spawning for free.
 	var r := randf()
 	if r < enemy_barb_chance:
-		_enemy_elixir.spend(spawn_cost)
-		spawn_one(1, _enemy_base, _player_base)
+		if _enemy_elixir.spend(spawn_cost):
+			spawn_one(1, _enemy_base, _player_base)
 	elif r < enemy_barb_chance + enemy_wizard_chance:
-		_enemy_elixir.spend(wizard_spawn_cost)
-		spawn_one_wizard(1, _enemy_base, _player_base)
+		if _enemy_elixir.spend(wizard_spawn_cost):
+			spawn_one_wizard(1, _enemy_base, _player_base)
 	else:
-		_enemy_elixir.spend(builder_spawn_cost)
-		spawn_one_builder(1, _enemy_base, _player_base)
+		if _enemy_elixir.spend(builder_spawn_cost):
+			spawn_one_builder(1, _enemy_base, _player_base)
 
 # A base was destroyed: its team loses, the other team wins. Show it once.
 func _on_base_destroyed(team: int) -> void:
