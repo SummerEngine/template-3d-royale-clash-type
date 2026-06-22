@@ -1,0 +1,10 @@
+# Godot 4 import cache & editor-generated data (regenerated from the source assets)
+.godot/
+
+# Machine-specific Summer Engine local config
+.summer/local/
+
+# Backups / OS / editor cruft
+project.godot.bak
+*.tmp
+.DS_Store

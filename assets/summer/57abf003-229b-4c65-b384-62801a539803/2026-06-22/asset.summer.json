@@ -1,0 +1,65 @@
+{
+	"assetId": "57abf003-229b-4c65-b384-62801a539803",
+	"metadata": {
+		"downloadUrl": "https://res.cloudinary.com/dol86wsz1/video/upload/v1782134539/summer_art/sfx_a_short_satisfying_building_co_.wav",
+		"fileName": "sfx_a_short_satisfying_building_co_.wav",
+		"filename": "sfx_a_short_satisfying_building_co_.wav",
+		"id": "57abf003-229b-4c65-b384-62801a539803",
+		"metadata": {
+			"capability": "sound_effects",
+			"chainId": "3ab3d65a-b4fe-4c39-93db-7fc83be227f7",
+			"duration": 4.0,
+			"durationMs": 4000.0,
+			"entrypoint": "api/mcp/generate/audio",
+			"loop": false,
+			"modelId": "eleven_text_to_sound_v2",
+			"outputFormat": "wav",
+			"postProcessed": true,
+			"provider": "elevenlabs",
+			"seo": {
+				"description": "Short cartoon building collapse sound effect. About 1 second mono clip with punchy impact and debris elements. MP3 format. Free commercial use.",
+				"keywords": [
+					"free game assets",
+					"sound effect",
+					"game sound effects free",
+					"game audio",
+					"short",
+					"satisfying",
+					"building",
+					"collapse",
+					"crumble",
+					"game effect"
+				],
+				"openGraph": {
+					"description": "Short cartoon building collapse sound effect. About 1 second mono clip with punchy impact and debris elements. MP3 format. Free commercial use.",
+					"title": "SFX: A short satisfying building co... - Free Sound Effect",
+					"type": "article"
+				},
+				"title": "SFX: A short satisfying building co... - Free Sound Effect | Summer Engine",
+				"twitter": {
+					"card": "summary_large_image",
+					"description": "Short cartoon building collapse sound effect. About 1 second mono clip with punchy impact and debris elements. MP3 format. Free commercial use.",
+					"title": "SFX: A short satisfying building co... - Free Sound Effect"
+				}
+			},
+			"surface": "mcp",
+			"text": "A short satisfying building collapse and crumble with a small explosion. Cartoonish Clash of Clans / Supercell style, punchy, under one second. Single mono game sound effect, no music.",
+			"trimmedMs": 0.0
+		},
+		"name": "SFX: A short satisfying building co...",
+		"previewUrl": "https://res.cloudinary.com/dol86wsz1/video/upload/v1782134539/summer_art/sfx_a_short_satisfying_building_co_.wav",
+		"primary": true,
+		"thumbnailUrl": "https://res.cloudinary.com/dol86wsz1/video/upload/v1782134539/summer_art/sfx_a_short_satisfying_building_co_.wav",
+		"title": "SFX: A short satisfying building co...",
+		"type": "audio",
+		"url": "https://res.cloudinary.com/dol86wsz1/video/upload/v1782134539/summer_art/sfx_a_short_satisfying_building_co_.wav",
+		"version": "2026-06-22"
+	},
+	"name": "SFX: A short satisfying building co...",
+	"paths": [
+		"res://assets/summer/57abf003-229b-4c65-b384-62801a539803/2026-06-22/sfx_a_short_satisfying_building_co_.wav"
+	],
+	"primaryPath": "res://assets/summer/57abf003-229b-4c65-b384-62801a539803/2026-06-22/sfx_a_short_satisfying_building_co_.wav",
+	"source": "summer-studio",
+	"version": "2026-06-22"
+}

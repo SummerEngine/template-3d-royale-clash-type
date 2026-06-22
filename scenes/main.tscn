@@ -1,0 +1,208 @@
+[gd_scene format=3 uid="uid://h3g3y4ca6465"]
+
+[ext_resource type="PackedScene" uid="uid://dhmq4yhhniv1" path="res://models/house.glb" id="3_sugp2"]
+[ext_resource type="Script" uid="uid://4t8h8jo34s85" path="res://scripts/base.gd" id="4_base"]
+[ext_resource type="PackedScene" uid="uid://cvm55abb7jl6s" path="res://models/wall_segment.glb" id="4_tbgi4"]
+[ext_resource type="Script" uid="uid://glhujmcqq6xy" path="res://scripts/battle_manager.gd" id="5_mgr"]
+[ext_resource type="PackedScene" uid="uid://nfsdjvi4e1xg" path="res://models/tower.glb" id="5_tefeu"]
+[ext_resource type="Shader" uid="uid://cqg7lgrass8nd" path="res://shaders/grass_ground.gdshader" id="6_grass"]
+[ext_resource type="Script" uid="uid://dufk50ejob1m3" path="res://scripts/princess_tower.gd" id="7_tower"]
+[ext_resource type="PackedScene" uid="uid://b5jkc6ygso036" path="res://models/cr_tower.glb" id="8_crtwr"]
+[ext_resource type="PackedScene" uid="uid://c71mhbmnxxoi" path="res://models/bridge.glb" id="9_bridge"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_grass"]
+render_priority = 0
+shader = ExtResource("6_grass")
+shader_parameter/grass_light = Color(0.44, 0.79, 0.3, 1)
+shader_parameter/grass_dark = Color(0.22, 0.55, 0.2, 1)
+shader_parameter/grass_deep = Color(0.13, 0.39, 0.15, 1)
+shader_parameter/patch_scale = 0.06
+shader_parameter/speckle_scale = 1.6
+shader_parameter/diamond_scale = 0.35
+shader_parameter/diamond_strength = 0.04
+shader_parameter/edge_darken = 0.28
+shader_parameter/map_half_size = 60.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_o5qli"]
+size = Vector3(160, 1.5, 100)
+
+[sub_resource type="StandardMaterial3D" id="Material_moat"]
+albedo_color = Color(0.16, 0.48, 0.85, 1)
+metallic = 0.15
+roughness = 0.16
+
+[sub_resource type="BoxMesh" id="BoxMesh_moat"]
+size = Vector3(170, 1.2, 2.8)
+
+[sub_resource type="Environment" id="Environment_0wfyh"]
+background_mode = 1
+background_color = Color(0.45, 0.72, 0.95, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.62, 0.71, 0.86, 1)
+ambient_light_energy = 0.35
+tonemap_mode = 2
+
+[node name="Main" type="Node3D" unique_id=657209347]
+
+[node name="GrassP" type="MeshInstance3D" parent="." unique_id=891515603]
+transform = Transform3D(0.70710677, 0, 0.70710677, 0, 1, 0, -0.70710677, 0, 0.70710677, -36.416, -0.75, -36.416)
+material_override = SubResource("ShaderMaterial_grass")
+mesh = SubResource("BoxMesh_o5qli")
+
+[node name="GrassE" type="MeshInstance3D" parent="." unique_id=891515604]
+transform = Transform3D(0.70710677, 0, 0.70710677, 0, 1, 0, -0.70710677, 0, 0.70710677, 36.416, -0.75, 36.416)
+material_override = SubResource("ShaderMaterial_grass")
+mesh = SubResource("BoxMesh_o5qli")
+
+[node name="Moat" type="MeshInstance3D" parent="." unique_id=771122334]
+transform = Transform3D(0.70710677, 0, 0.70710677, 0, 1, 0, -0.70710677, 0, 0.70710677, 0, -1.1, 0)
+material_override = SubResource("Material_moat")
+mesh = SubResource("BoxMesh_moat")
+
+[node name="BridgeA" parent="." unique_id=771122335 instance=ExtResource("9_bridge")]
+transform = Transform3D(3.889, 0, -3.889, 0, 5.5, 0, 3.889, 0, 3.889, 6.364, -0.2, -6.364)
+
+[node name="BridgeB" parent="." unique_id=771122336 instance=ExtResource("9_bridge")]
+transform = Transform3D(3.889, 0, -3.889, 0, 5.5, 0, 3.889, 0, 3.889, -6.364, -0.2, 6.364)
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=1728543]
+transform = Transform3D(0.81915206, 0.43938506, -0.36868784, 0, 0.64278764, 0.76604444, 0.57357645, -0.62750685, 0.5265408, 0, 0, 0)
+light_color = Color(1, 0.96, 0.86, 1)
+light_energy = 1.3
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=136390197]
+environment = SubResource("Environment_0wfyh")
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=638405901]
+transform = Transform3D(-0.7071068, 0.5, -0.5, 0, 0.70710677, 0.70710677, 0.7071068, 0.5, -0.5, -36, 47.353218, -36)
+current = true
+fov = 40.0
+
+[node name="House" parent="." unique_id=27933716 instance=ExtResource("3_sugp2")]
+transform = Transform3D(5.656854, 0, 5.656854, 0, 8, 0, -5.656854, 0, 5.656854, -14, 0, -14)
+script = ExtResource("4_base")
+
+[node name="House2" parent="." unique_id=634925809 instance=ExtResource("3_sugp2")]
+transform = Transform3D(-5.656854, 0, -5.656854, 0, 8, 0, 5.656854, 0, -5.656854, 14, 0, 14)
+script = ExtResource("4_base")
+team = 1
+
+[node name="TowerP_L" parent="." unique_id=553804457 instance=ExtResource("8_crtwr")]
+transform = Transform3D(4.242641, 0, 4.242641, 0, 6, 0, -4.242641, 0, 4.242641, -1.27208, 0, -14)
+script = ExtResource("7_tower")
+
+[node name="TowerP_R" parent="." unique_id=1636169128 instance=ExtResource("8_crtwr")]
+transform = Transform3D(4.242641, 0, 4.242641, 0, 6, 0, -4.242641, 0, 4.242641, -14, 0, -1.27208)
+script = ExtResource("7_tower")
+
+[node name="TowerE_L" parent="." unique_id=394934083 instance=ExtResource("8_crtwr")]
+transform = Transform3D(-4.242641, 0, -4.242641, 0, 6, 0, 4.242641, 0, -4.242641, 1.27208, 0, 14)
+script = ExtResource("7_tower")
+team = 1
+
+[node name="TowerE_R" parent="." unique_id=1108829119 instance=ExtResource("8_crtwr")]
+transform = Transform3D(-4.242641, 0, -4.242641, 0, 6, 0, 4.242641, 0, -4.242641, 14, 0, 1.27208)
+script = ExtResource("7_tower")
+team = 1
+
+[node name="BattleManager" type="Node" parent="." unique_id=1631023825]
+script = ExtResource("5_mgr")
+
+[node name="Arena" type="Node3D" parent="." unique_id=914443452]
+
+[node name="Tower_NE" parent="Arena" unique_id=2010215525 instance=ExtResource("5_tefeu")]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, 13.2, 0, 23)
+
+[node name="Tower_ENorth" parent="Arena" unique_id=1084137607 instance=ExtResource("5_tefeu")]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, 23, 0, 13.2)
+
+[node name="Tower_ESouth" parent="Arena" unique_id=1434021873 instance=ExtResource("5_tefeu")]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, 23, 0, -13.2)
+
+[node name="Tower_SE" parent="Arena" unique_id=1265646491 instance=ExtResource("5_tefeu")]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, 13.2, 0, -23)
+
+[node name="Tower_SW" parent="Arena" unique_id=357843239 instance=ExtResource("5_tefeu")]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, -13.2, 0, -23)
+
+[node name="Tower_WSouth" parent="Arena" unique_id=1850081232 instance=ExtResource("5_tefeu")]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, -23, 0, -13.2)
+
+[node name="Tower_WNorth" parent="Arena" unique_id=46507288 instance=ExtResource("5_tefeu")]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, -23, 0, 13.2)
+
+[node name="Tower_NW" parent="Arena" unique_id=562610767 instance=ExtResource("5_tefeu")]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, -13.2, 0, 23)
+
+[node name="Wall_N1a" parent="Arena" unique_id=1861790068 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(7.15, 0, 0, 0, 6.6, 0, 0, 0, 3.3, -9.06, 0, 23)
+
+[node name="Wall_N1b" parent="Arena" unique_id=818111791 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(7.15, 0, 0, 0, 6.6, 0, 0, 0, 3.3, -2.94, 0, 23)
+
+[node name="Wall_N2a" parent="Arena" unique_id=1950530136 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(7.15, 0, 0, 0, 6.6, 0, 0, 0, 3.3, 2.94, 0, 23)
+
+[node name="Wall_N2b" parent="Arena" unique_id=1970193741 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(7.15, 0, 0, 0, 6.6, 0, 0, 0, 3.3, 9.06, 0, 23)
+
+[node name="Wall_S1a" parent="Arena" unique_id=1163933352 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(7.15, 0, 0, 0, 6.6, 0, 0, 0, 3.3, -9.06, 0, -23)
+
+[node name="Wall_S1b" parent="Arena" unique_id=1177386002 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(7.15, 0, 0, 0, 6.6, 0, 0, 0, 3.3, -2.94, 0, -23)
+
+[node name="Wall_S2a" parent="Arena" unique_id=1642281812 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(7.15, 0, 0, 0, 6.6, 0, 0, 0, 3.3, 2.94, 0, -23)
+
+[node name="Wall_S2b" parent="Arena" unique_id=2010737144 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(7.15, 0, 0, 0, 6.6, 0, 0, 0, 3.3, 9.06, 0, -23)
+
+[node name="Wall_E1a" parent="Arena" unique_id=900476054 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(-3.1253643e-07, 0, 3.3, 0, 6.6, 0, -7.15, 0, -1.4424758e-07, 23, 0, -9.06)
+
+[node name="Wall_E1b" parent="Arena" unique_id=1780622562 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(-3.1253643e-07, 0, 3.3, 0, 6.6, 0, -7.15, 0, -1.4424758e-07, 23, 0, -2.94)
+
+[node name="Wall_E2a" parent="Arena" unique_id=938661148 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(-3.1253643e-07, 0, 3.3, 0, 6.6, 0, -7.15, 0, -1.4424758e-07, 23, 0, 2.94)
+
+[node name="Wall_E2b" parent="Arena" unique_id=1443085894 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(-3.1253643e-07, 0, 3.3, 0, 6.6, 0, -7.15, 0, -1.4424758e-07, 23, 0, 9.06)
+
+[node name="Wall_W1a" parent="Arena" unique_id=905351980 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(-3.1253643e-07, 0, 3.3, 0, 6.6, 0, -7.15, 0, -1.4424758e-07, -23, 0, -9.06)
+
+[node name="Wall_W1b" parent="Arena" unique_id=395501618 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(-3.1253643e-07, 0, 3.3, 0, 6.6, 0, -7.15, 0, -1.4424758e-07, -23, 0, -2.94)
+
+[node name="Wall_W2a" parent="Arena" unique_id=196633736 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(-3.1253643e-07, 0, 3.3, 0, 6.6, 0, -7.15, 0, -1.4424758e-07, -23, 0, 2.94)
+
+[node name="Wall_W2b" parent="Arena" unique_id=42532653 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(-3.1253643e-07, 0, 3.3, 0, 6.6, 0, -7.15, 0, -1.4424758e-07, -23, 0, 9.06)
+
+[node name="Wall_NEa" parent="Arena" unique_id=1471999584 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(5.0558133, 0, 2.3334522, 0, 6.6, 0, -5.0558133, 0, 2.3334522, 20.26, 0, 15.94)
+
+[node name="Wall_NEb" parent="Arena" unique_id=633649141 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(5.0558133, 0, 2.3334522, 0, 6.6, 0, -5.0558133, 0, 2.3334522, 15.94, 0, 20.26)
+
+[node name="Wall_NWa" parent="Arena" unique_id=280439065 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(5.0558133, 0, -2.3334522, 0, 6.6, 0, 5.0558133, 0, 2.3334522, -15.94, 0, 20.26)
+
+[node name="Wall_NWb" parent="Arena" unique_id=1305980463 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(5.0558133, 0, -2.3334522, 0, 6.6, 0, 5.0558133, 0, 2.3334522, -20.26, 0, 15.94)
+
+[node name="Wall_SEa" parent="Arena" unique_id=998236617 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(-5.0558133, 0, 2.3334522, 0, 6.6, 0, -5.0558133, 0, -2.3334522, 15.94, 0, -20.26)
+
+[node name="Wall_SEb" parent="Arena" unique_id=1569030557 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(-5.0558133, 0, 2.3334522, 0, 6.6, 0, -5.0558133, 0, -2.3334522, 20.26, 0, -15.94)
+
+[node name="Wall_SWa" parent="Arena" unique_id=1737002935 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(-5.0558133, 0, -2.3334522, 0, 6.6, 0, 5.0558133, 0, -2.3334522, -20.26, 0, -15.94)
+
+[node name="Wall_SWb" parent="Arena" unique_id=1272167957 instance=ExtResource("4_tbgi4")]
+transform = Transform3D(-5.0558133, 0, -2.3334522, 0, 6.6, 0, 5.0558133, 0, -2.3334522, -15.94, 0, -20.26)
