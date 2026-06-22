@@ -9,7 +9,7 @@ extends Node3D
 # Spawned by the Builder: instantiate the half-pump glb, set_script(this),
 # add_child() + global_position, then setup(team, manager, scale, radius).
 
-@export var max_hp: float = 150.0     # weaker than a finished pump (400) — it's incomplete
+@export var max_hp: float = 75.0      # half the finished pump (150) — it's incomplete
 @export var radius: float = 1.6       # targeting / push-out radius (overridden by setup)
 @export var fade_time: float = 0.6    # crumble duration on death
 

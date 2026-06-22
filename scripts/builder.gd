@@ -249,11 +249,13 @@ func _on_build_tick(delta: float) -> void:
 func _finish_build() -> void:
 	# The finished pump rises where the half-finished one stood (fallback: our spot).
 	var at := global_position
+	var carried_damage := 0.0
 	if is_instance_valid(_site):
 		at = _site.global_position
+		carried_damage = maxf(0.0, _site.max_hp - _site.hp)   # hits the scaffold took
 		_site.complete()   # remove the half-finished placeholder
 	_site = null
-	_spawn_pump(at)
+	_spawn_pump(at, carried_damage)
 	_building = false
 	_walk_target = -1.0   # pick a fresh march leg next frame
 
@@ -261,7 +263,7 @@ func _finish_build() -> void:
 # pump script self-registers (push-out + targeting), pops itself in, and starts
 # generating elixir for our team. Loaded at runtime so the builder still works if
 # the asset is missing.
-func _spawn_pump(at: Vector3) -> void:
+func _spawn_pump(at: Vector3, carried_damage: float = 0.0) -> void:
 	if not ResourceLoader.exists(PUMP_PATH):
 		return
 	var ps = load(PUMP_PATH)
@@ -274,7 +276,7 @@ func _spawn_pump(at: Vector3) -> void:
 	pump.set_script(PUMP)
 	host.add_child(pump)
 	pump.global_position = Vector3(at.x, 0.0, at.z)
-	pump.setup(team, _manager, pump_scale, pump_radius)
+	pump.setup(team, _manager, pump_scale, pump_radius, carried_damage)
 	SFX.play(self, "res://audio/house_hit", 0.0)   # a final, louder "done" thunk
 
 # The enemy base position on the ground plane (the march + face goal); falls back

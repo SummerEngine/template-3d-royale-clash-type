@@ -9,7 +9,7 @@ extends Node3D
 # Spawned by the Builder: instantiate the glb, set_script(this), add_child() +
 # global_position, then setup(team, manager, scale).
 
-@export var max_hp: float = 400.0           # ~10x a barbarian (40) — tanky like a building
+@export var max_hp: float = 150.0           # finished pump; the half-built site has 75
 @export var radius: float = 1.6             # targeting / attack-range radius read by attackers
 @export var generate_interval: float = 10.0 # seconds between elixir ticks
 @export var generate_amount: float = 1.0    # elixir produced per tick
@@ -27,13 +27,14 @@ var hp: float = 0.0
 var _manager = null          # BattleManager — untyped for cross-script duck typing
 var _rest_scale: float = 1.0
 
-# Called by the Builder AFTER add_child() + global_position are set.
-func setup(p_team: int, p_manager, target_scale: float, r: float) -> void:
+# Called by the Builder AFTER add_child() + global_position are set. start_damage
+# carries over the hits the half-finished site took, so completing it doesn't heal.
+func setup(p_team: int, p_manager, target_scale: float, r: float, start_damage: float = 0.0) -> void:
 	team = p_team
 	_manager = p_manager
 	_rest_scale = target_scale
 	radius = r
-	hp = max_hp
+	hp = max_hp - start_damage   # finished pump inherits the site's damage (no heal-on-complete)
 	alive = true
 	if is_instance_valid(_manager) and _manager.has_method("register_pump"):
 		_manager.register_pump(self, radius, team)   # one entry drives both push-out and enemy targeting

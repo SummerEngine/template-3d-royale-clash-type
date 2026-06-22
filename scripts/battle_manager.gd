@@ -42,7 +42,7 @@ const WIN_SCREEN := preload("res://scripts/win_screen.gd")
 @export var spawn_button_margin: float = 28.0    # spawn button inset from the screen corner (px)
 @export var spawn_cost: float = 2.0              # elixir cost per barbarian
 @export var wizard_spawn_cost: float = 3.0       # elixir cost per wizard (also the enemy's "wait for 3" gate)
-@export var builder_spawn_cost: float = 4.0      # elixir cost per builder
+@export var builder_spawn_cost: float = 3.0      # elixir cost per builder
 
 const SPAWN_CARD_GAP := 48.0   # px gap between spawn cards (clears both glow halos)
 
