@@ -16,6 +16,8 @@ extends Node
 # just short of the center line. Min keeps drops clear of the base footprint.
 @export var deploy_forward_min: float = 3.0   # nearest the base you may drop (world units forward)
 @export var deploy_forward_max: float = 18.0  # furthest forward — just below the arena center
+@export var enemy_strip_gap: float = 2.0      # forward clearance past map center before the unlocked enemy strip starts (clears the moat)
+@export var enemy_strip_depth: float = 5.0    # how far the unlocked enemy strip extends past the moat
 @export var drag_threshold: float = 10.0      # px the cursor must move before it counts as a drag (vs a tap)
 @export var ghost_alpha: float = 0.5
 @export var ghost_tint: Color = Color(0.45, 0.85, 1.0)   # cyan deploy hologram
@@ -126,11 +128,35 @@ func _compute_pos(mouse: Vector2) -> Vector3:
 	var ground := _ground_point(mouse, _line_center())
 	var rel := ground - base
 	rel.y = 0.0
-	# Decompose the cursor onto forward (depth) + lateral, clamping each. The player
-	# now controls BOTH: lateral within bounds, forward from just past the base up to
-	# just below the center line (Clash-Royale "own half" placement).
-	var forward_amt := clampf(rel.dot(fwd), deploy_forward_min, deploy_forward_max)
-	var lateral := clampf(rel.dot(right), -lateral_half_width, lateral_half_width)
+	# Decompose the cursor onto forward (depth) + lateral.
+	var raw_fwd := rel.dot(fwd)
+	var raw_lat := rel.dot(right)
+	var center_fwd := (Vector3.ZERO - base).dot(fwd)   # forward distance from base to map centre (the river)
+
+	# Which lateral half(s) past the river are unlocked: each destroyed enemy princess
+	# tower opens its own lane (full width once both are down) — Clash-Royale style.
+	var un_min := 0.0
+	var un_max := 0.0
+	var unlocked := false
+	if _manager != null and _manager.has_method("destroyed_enemy_tower_positions"):
+		for tpos in _manager.destroyed_enemy_tower_positions():
+			if (tpos - base).dot(right) >= 0.0:
+				un_max = lateral_half_width    # open the right half
+			else:
+				un_min = -lateral_half_width   # open the left half
+			unlocked = true
+
+	var forward_amt: float
+	var lateral: float
+	if unlocked and raw_fwd > center_fwd and raw_lat >= un_min and raw_lat <= un_max:
+		# Unlocked strip just past the moat, on the open lane(s).
+		var strip_min := center_fwd + enemy_strip_gap
+		forward_amt = clampf(raw_fwd, strip_min, strip_min + enemy_strip_depth)
+		lateral = clampf(raw_lat, un_min, un_max)
+	else:
+		# Own half, up to the river (Clash-Royale "own half" placement).
+		forward_amt = clampf(raw_fwd, deploy_forward_min, deploy_forward_max)
+		lateral = clampf(raw_lat, -lateral_half_width, lateral_half_width)
 	var p := base + fwd * forward_amt + right * lateral
 	var oct := absf(p.x) + absf(p.z)
 	if oct > island_octagon_limit:

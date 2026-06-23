@@ -22,16 +22,16 @@ const WIN_SCREEN := preload("res://scripts/win_screen.gd")
 
 @export var player_base_path: NodePath
 @export var enemy_base_path: NodePath
-@export var squad_size: int = 10
-@export var wizard_count: int = 3   # ranged wizards per team, spawned behind the front line
-@export var builder_count: int = 2   # non-combat builders per team, spawned behind the line
+@export var squad_size: int = 4    # starting barbarians per team (split 2 left / 2 right)
+@export var wizard_count: int = 0   # no wizards at start — both sides buy them later via elixir
+@export var builder_count: int = 0   # no builders at start — bought later via elixir
 @export var separation_strength: float = 0.5   # fraction of overlap resolved per physics frame (0..1); soft push
 @export var island_half_extent: float = 19.0
 @export var island_octagon_limit: float = 31.0   # |x|+|z| bound; diagonal arena walls sit at 32, units inset 1
 @export var moat_half_width: float = 1.5     # perpendicular half-width of the real grass gap (slab inner edges at +/-1.5)
-@export var bridge_offset: float = 9.0       # each bridge sits this far from centre along the moat
+@export var bridge_offset: float = 9.1       # each bridge sits this far from centre along the moat (nudged out 0.1 to line up with the 3D deck)
 @export var bridge_half_width: float = 2.6   # half the crossable gap at each bridge
-@export var bridge_capture: float = 2.0      # if shoved this far past a bridge edge (still in water), slide back onto the bridge instead of off it
+@export var bridge_capture: float = 0.5      # only a small jostle just past a bridge edge is pulled back onto the lane; walk into the water any further and you're blocked + ejected straight back to your own bank (no long sideways teleport)
 @export var bridge_arc_peak: float = 1.3     # visual height units rise to at a bridge's centre (tune to the deck)
 @export var bridge_arc_span: float = 2.75    # perpendicular half-span where the deck meets the banks (height 0)
 @export var enemy_start_elixir: float = 0.0      # enemy begins with this much (0 = ~9s behind the player's 3)
@@ -42,7 +42,7 @@ const WIN_SCREEN := preload("res://scripts/win_screen.gd")
 @export var spawn_button_margin: float = 28.0    # spawn button inset from the screen corner (px)
 @export var spawn_cost: float = 2.0              # elixir cost per barbarian
 @export var wizard_spawn_cost: float = 3.0       # elixir cost per wizard (also the enemy's "wait for 3" gate)
-@export var builder_spawn_cost: float = 3.0      # elixir cost per builder
+@export var builder_spawn_cost: float = 4.0      # elixir cost per builder
 
 const SPAWN_CARD_GAP := 48.0   # px gap between spawn cards (clears both glow halos)
 
@@ -53,6 +53,7 @@ const MOAT_T := Vector3(0.70710678, 0, -0.70710678)  # unit tangent along the mo
 
 var units: Array = [[], []]   # units[0] = team 0 list, units[1] = team 1 list (Arrays of unit Node3Ds)
 var _pumps: Array = []        # built structures: { "node": Node3D, "r": float } — units get shoved out, pumps never move
+var _enemy_towers: Array = []  # [{node, pos}] the team-1 princess towers; a fallen one opens an enemy-side deploy strip
 var _player_base   # HouseBase — untyped for cross-script duck typing
 var _enemy_base    # HouseBase — untyped for cross-script duck typing
 var _winner_shown: bool = false
@@ -88,6 +89,7 @@ func _ready() -> void:
 	# back to scanning siblings — exported NodePaths can get silently dropped when
 	# the scene is saved, so we never hard-depend on them.
 	_resolve_bases()
+	_resolve_enemy_towers()
 
 	# Listen for either base being destroyed to detect the winner.
 	if is_instance_valid(_player_base):
@@ -115,6 +117,11 @@ func _ready() -> void:
 	_setup_elixir()
 	_build_spawn_cards()
 	_start_enemy_spawner()
+	SFX.play(self, "res://audio/gong", -2.0, 0.0)   # ceremonial gong to kick off the match
+
+	# Collapse the decorative arena walls + corner towers into MultiMesh batches
+	# (32 static draw calls -> 2). Purely visual; gameplay nodes are untouched.
+	_batch_static_arena()
 
 	if _PERF_PROBE:
 		_setup_perf_probe()
@@ -141,6 +148,12 @@ func _resolve_bases() -> void:
 				_enemy_base = sib
 
 # Spawn squad_size units clustered just in front of own_base, toward map center.
+# Staggered: one entity per frame, so the full squad (units + wizards + builders)
+# ramps in over a fraction of a second instead of instantiating and compiling all
+# the rigged GLBs + their shaders in a single frame — that all-at-once burst was
+# the multi-second freeze at the start of a match on mobile. Runs as a coroutine;
+# both teams' spawns interleave across frames. Bails cleanly if the scene unloads
+# mid-ramp.
 func spawn_squad(team: int, own_base: Node3D, enemy_base: Node3D) -> void:
 	# Direction from the base toward the origin (map center).
 	var to_center := Vector3.ZERO - own_base.global_position
@@ -149,17 +162,25 @@ func spawn_squad(team: int, own_base: Node3D, enemy_base: Node3D) -> void:
 	var cluster_center := own_base.global_position + dir * 5.0
 	cluster_center.y = 0.0
 
-	# Scatter each unit around the cluster center with a per-index jitter
-	# so they don't perfectly overlap.
+	# Split the squad into a left and a right group along the moat's lateral axis so
+	# they set off down the two lanes (toward the bridges/towers). First half goes
+	# to one side, second half to the other — a 4-squad starts 2 left / 2 right.
+	# Pull the lanes in toward the centre line (the princess towers sit out at
+	# +/-bridge_offset laterally) so the squad doesn't spawn directly behind a tower;
+	# they still split left/right and route to the bridges from there.
+	var lane_lateral := bridge_offset * 0.5
+	var half := int(ceil(squad_size / 2.0))
 	for i in squad_size:
-		var offset := Vector3(
-			randf_range(-3.0, 3.0),
-			0.0,
-			randf_range(-3.0, 3.0)
-		)
-		var spawn_pos := cluster_center + offset
+		var lane: Vector3 = MOAT_T * lane_lateral
+		if i >= half:
+			lane = -lane
+		var jitter := Vector3(randf_range(-1.2, 1.2), 0.0, randf_range(-1.2, 1.2))
+		var spawn_pos := cluster_center + lane + jitter
 		spawn_pos.y = 0.0
 		_make_unit(team, enemy_base, spawn_pos)
+		await get_tree().process_frame
+		if not is_inside_tree() or not is_instance_valid(enemy_base):
+			return
 
 	# A few ranged wizards behind the front line (closer to own base).
 	var wiz_center := own_base.global_position + dir * 2.5
@@ -169,6 +190,9 @@ func spawn_squad(team: int, own_base: Node3D, enemy_base: Node3D) -> void:
 		var w_pos := wiz_center + w_offset
 		w_pos.y = 0.0
 		_make_wizard(team, enemy_base, w_pos)
+		await get_tree().process_frame
+		if not is_inside_tree() or not is_instance_valid(enemy_base):
+			return
 
 	# A couple of non-combat builders behind the line; they plant and "build".
 	for i in builder_count:
@@ -176,6 +200,9 @@ func spawn_squad(team: int, own_base: Node3D, enemy_base: Node3D) -> void:
 		var b_pos := wiz_center + b_offset
 		b_pos.y = 0.0
 		_make_builder(team, enemy_base, b_pos)
+		await get_tree().process_frame
+		if not is_inside_tree() or not is_instance_valid(enemy_base):
+			return
 
 # A front-of-base spawn point (toward map center) with a small random jitter.
 func _front_spawn_pos(own_base: Node3D) -> Vector3:
@@ -227,6 +254,58 @@ func _make_builder(team: int, enemy_base: Node3D, spawn_pos: Vector3) -> void:
 	add_child(u)
 	u.global_position = spawn_pos
 	units[team].append(u)
+
+# --- Static-prop batching (draw-call optimization) -------------------------
+# Collapse the repeated, purely-decorative Arena props (24 wall segments + 8
+# corner towers) into one MultiMeshInstance3D each: ~32 draw calls -> 2, no
+# visual change. The originals stay in the .tscn (so they're still editable in
+# the editor) but are freed at runtime once the batch stands in for them. The
+# gameplay princess towers live at the scene ROOT (not under Arena), so the
+# "Tower_"/"Wall_" Arena-children scan never reaches them.
+func _batch_static_arena() -> void:
+	var arena = get_parent().get_node_or_null("Arena")
+	if arena == null:
+		return
+	_batch_group(arena, "Wall_", "WallsBatch")
+	_batch_group(arena, "Tower_", "TowersBatch")
+
+func _batch_group(arena, prefix: String, batch_name: String) -> void:
+	var nodes: Array = []
+	for c in arena.get_children():
+		if String(c.name).begins_with(prefix):
+			nodes.append(c)
+	if nodes.is_empty():
+		return
+	var src_mi = _first_mesh_instance(nodes[0])
+	if src_mi == null or src_mi.mesh == null:
+		return
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = src_mi.mesh
+	mm.instance_count = nodes.size()
+	var inv: Transform3D = arena.global_transform.affine_inverse()
+	for i in nodes.size():
+		var mi = _first_mesh_instance(nodes[i])
+		if mi != null:
+			mm.set_instance_transform(i, inv * mi.global_transform)
+	var mmi := MultiMeshInstance3D.new()
+	mmi.name = batch_name
+	mmi.multimesh = mm
+	# GLB surface materials ride on the mesh itself; copy an override only if one exists.
+	if src_mi.material_override != null:
+		mmi.material_override = src_mi.material_override
+	arena.add_child(mmi)
+	for n in nodes:
+		n.queue_free()
+
+func _first_mesh_instance(n):
+	if n is MeshInstance3D:
+		return n
+	for c in n.get_children():
+		var f = _first_mesh_instance(c)
+		if f != null:
+			return f
+	return null
 
 # Targeting query: nearest living enemy unit by horizontal distance, or null.
 func get_nearest_enemy(from_pos: Vector3, my_team: int) -> Node3D:
@@ -280,7 +359,12 @@ func moat_route(from: Vector3, to: Vector3) -> Vector3:
 		return to
 	var along := from.dot(MOAT_T)
 	var b_along := bridge_offset if along >= 0.0 else -bridge_offset
-	return MOAT_T * b_along
+	# Aim at the bridge lane but just PAST the centerline onto the destination bank,
+	# not exactly on the line. A unit that reaches the old on-the-line waypoint could
+	# park there (still classified as "crossing", goal never advancing) and walk in
+	# place forever; nudging it across guarantees sf flips and routing continues.
+	var cross := MOAT_N * (signf(st) * (moat_half_width + 0.5))
+	return MOAT_T * b_along + cross
 
 # Visual-only deck height for a unit at `pos`: an arch that peaks at a bridge's
 # centre line and falls to 0 at the banks, or 0 anywhere off a bridge. Units read
@@ -515,6 +599,27 @@ func _place_card(card: Control, slot: int) -> void:
 	card.offset_bottom = -spawn_button_margin
 	card.offset_top = -spawn_button_margin - spawn_button_size
 
+# Capture the two enemy (team-1) princess towers once, storing their world position
+# so a fallen tower's lane is still locatable after the node frees itself.
+func _resolve_enemy_towers() -> void:
+	var parent := get_parent()
+	if parent == null:
+		return
+	for n in ["TowerE_L", "TowerE_R"]:
+		var t = parent.get_node_or_null(n)
+		if t != null:
+			_enemy_towers.append({ "node": t, "pos": t.global_position })
+
+# World positions of destroyed enemy princess towers — each opens a deploy strip
+# past the moat on its lane (read by deploy_controller.gd).
+func destroyed_enemy_tower_positions() -> Array:
+	var out: Array = []
+	for e in _enemy_towers:
+		var t = e["node"]
+		if not is_instance_valid(t) or not t.get("alive"):
+			out.append(e["pos"])
+	return out
+
 # --- Drag-to-deploy API (called by deploy_controller.gd) -------------------
 # Can the player start a deploy of `cost` right now?
 func can_deploy(cost: float) -> bool:
@@ -563,7 +668,7 @@ func _setup_audio() -> void:
 
 # Constant looping battle music, routed through the Music bus (slider-controlled).
 func _setup_music() -> void:
-	var path := "res://audio/battle_music.wav"
+	var path := "res://audio/battle_music.mp3"
 	if not ResourceLoader.exists(path):
 		return
 	var s = load(path)
@@ -636,10 +741,6 @@ func _setup_house_ui() -> void:
 	var ebar = HOUSE_BAR.new()
 	ebar.bind(_enemy_base)
 	add_child(ebar)
-
-	var hud = HOUSE_HUD.new()
-	hud.bind(_player_base, _enemy_base)
-	add_child(hud)
 
 # Subtle swipe-to-pan camera. Created from code (no .tscn edit), binds the
 # scene's current camera, and clamps panning to a small rectangle.
@@ -714,9 +815,40 @@ func _on_base_destroyed(team: int) -> void:
 	if _winner_shown:
 		return
 	_winner_shown = true
+	if is_instance_valid(_music):
+		_music.stop()   # gameplay theme ends the moment the match is decided
 	var winner := 1 - team
-	SFX.play(self, "res://audio/victory" if winner == 0 else "res://audio/defeat", 2.0)
+	_play_end_music(winner == 0)
 	_show_win_banner(winner)
+
+# Play a short victory/defeat track on the Music bus (slider-controlled). Prefers a
+# dedicated *_music file; falls back to the existing victory/defeat stinger until
+# the real tracks are generated, so this works now and auto-upgrades later.
+func _play_end_music(win: bool) -> void:
+	var stem := "victory" if win else "defeat"
+	var path := ""
+	for cand in [
+		"res://audio/%s_music.ogg" % stem,
+		"res://audio/%s_music.mp3" % stem,
+		"res://audio/%s_music.wav" % stem,
+		"res://audio/%s.wav" % stem,
+	]:
+		if ResourceLoader.exists(cand):
+			path = cand
+			break
+	if path == "":
+		return
+	var s = load(path)
+	if not (s is AudioStream):
+		return
+	var p := AudioStreamPlayer.new()
+	p.stream = s
+	p.process_mode = Node.PROCESS_MODE_ALWAYS   # survive the win-screen's tree pause
+	p.volume_db = -2.0
+	if AudioServer.get_bus_index(&"Music") != -1:
+		p.bus = &"Music"
+	add_child(p)
+	p.play()
 
 # Show the epic victory / defeat overlay (win_screen.gd). winner == 0 is the player.
 func _show_win_banner(winner: int) -> void:

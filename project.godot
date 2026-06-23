@@ -10,10 +10,12 @@ config_version=5
 
 [application]
 
-config/name="Barbarian Field"
+config/name="Royal Clash"
 config/description="A 3D mobile landscape diorama: a Clash of Clans style grassy island with a wandering barbarian."
 run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
+boot_splash/show_image=false
+config/icon="res://icon.png"
 
 [display]
 

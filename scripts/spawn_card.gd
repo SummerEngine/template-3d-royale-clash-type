@@ -10,6 +10,25 @@ extends Control
 
 const PAD := 20.0   # glow-halo padding around the button, in px
 
+# Radial affordability sweep: a dark overlay over the card art whose clockwise pie
+# wedge clears from 12 o'clock as current/cost climbs (0 = fully dark, 1 = clear).
+# canvas_item shader, COLOR written directly (MODULATE is a compile error here).
+const RADIAL_SHADER := """shader_type canvas_item;
+uniform float progress : hint_range(0.0, 1.0) = 0.0;    // current_elixir / cost
+uniform float dark_alpha : hint_range(0.0, 1.0) = 0.8;  // darkness of the not-yet-earned wedge
+uniform float light_alpha : hint_range(0.0, 1.0) = 0.32; // slight dim on the already-earned slice
+uniform sampler2D mask_tex : hint_default_white;          // the button art; its alpha clips the sweep to the button shape
+void fragment() {
+	vec2 p = UV - vec2(0.5);
+	float ang = atan(p.x, -p.y);          // 0 at top (12 o'clock), grows clockwise
+	if (ang < 0.0) { ang += 6.2831853; }  // wrap to [0, TAU)
+	float frac = ang / 6.2831853;         // 0..1 clockwise from the top
+	float dark = step(progress, frac);    // 1 where the wedge hasn't reached yet, else 0
+	float a = mix(light_alpha, dark_alpha, dark);  // earned slice: light dim; rest: darker
+	float mask = texture(mask_tex, UV).a;  // 0 in the transparent corners outside the squircle
+	COLOR = vec4(0.0, 0.0, 0.0, a * mask);
+}"""
+
 # Press result codes the manager's on_press callback returns.
 enum { IGNORED = 0, SPAWNED = 1, REJECTED = 2 }
 
@@ -23,6 +42,7 @@ var _glow: Panel = null
 var _glow_tween: Tween = null
 var _affordable: bool = false
 var _afford_inited: bool = false
+var _radial: ColorRect = null      # dark radial "cooldown" sweep over the art (RADIAL_SHADER)
 
 # button_size: square button edge (px). drop_count: cost pips to overlay in the
 # top-right (0 = none). controller: deploy_controller.gd. unit_def: { glb, scale,
@@ -38,6 +58,7 @@ func setup(button_size: float, texture: Texture2D, cost: float, drop_count: int,
 		_elixir.changed.connect(_on_elixir_changed)
 		# Initial paint off the current economy (the card may be built mid-regen).
 		_set_affordable(_elixir.current >= _cost)
+		_update_radial(_elixir.current)
 
 func _build(button_size: float, texture: Texture2D, drop_count: int, drop_texture: Texture2D) -> void:
 	# Soft "ready" glow halo behind the button (card rect + PAD), pulsed by afford.
@@ -68,6 +89,21 @@ func _build(button_size: float, texture: Texture2D, drop_count: int, drop_textur
 	_btn.button_down.connect(_on_down)
 	_btn.button_up.connect(_on_up)
 	add_child(_btn)
+
+	# Radial affordability sweep over the art. Sits above the button, below the cost
+	# pips (added next), and ignores the mouse so the button still receives presses.
+	_radial = ColorRect.new()
+	_radial.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_radial.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_radial.color = Color(0, 0, 0, 0)   # irrelevant — the shader writes COLOR directly
+	var rsh := Shader.new()
+	rsh.code = RADIAL_SHADER
+	var rmat := ShaderMaterial.new()
+	rmat.shader = rsh
+	rmat.set_shader_parameter("progress", 0.0)
+	rmat.set_shader_parameter("mask_tex", texture)   # clip the sweep to the button's opaque shape
+	_radial.material = rmat
+	add_child(_radial)
 
 	if drop_count > 0 and drop_texture != null:
 		_build_drops(button_size, drop_count, drop_texture)
@@ -135,6 +171,18 @@ func success_pop() -> void:
 	t.tween_property(_btn, "scale", Vector2.ONE, 0.45).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 	t.tween_property(_btn, "modulate", Color(1, 1, 1, 1), 0.28)
 
+# Just became affordable: a quick grow + bright flash that says "you can afford
+# this now" — a one-shot cue on top of the steady gold "ready" glow.
+func afford_pop() -> void:
+	if _btn == null:
+		return
+	_btn.scale = Vector2(1.18, 1.18)
+	_btn.modulate = Color(1.7, 1.7, 1.7, 1.0)
+	var t := create_tween()
+	t.set_parallel(true)
+	t.tween_property(_btn, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(_btn, "modulate", Color(1, 1, 1, 1), 0.3)
+
 # Can't afford / cancelled: redden + a quick rotational wiggle back to zero.
 func reject_wiggle() -> void:
 	if _btn == null:
@@ -152,13 +200,32 @@ func reject_wiggle() -> void:
 
 func _on_elixir_changed(current_amount: float, _maximum: float) -> void:
 	_set_affordable(current_amount >= _cost)
+	_update_radial(current_amount)
+
+# Drive the radial sweep: clear the dark wedge in proportion to current/cost, and
+# drop the overlay entirely once the card is affordable (the glow signals "ready").
+func _update_radial(current_amount: float) -> void:
+	if _radial == null:
+		return
+	var progress := 0.0
+	if _cost > 0.0:
+		progress = clampf(current_amount / _cost, 0.0, 1.0)
+	var mat := _radial.material as ShaderMaterial
+	if mat != null:
+		mat.set_shader_parameter("progress", progress)
+	_radial.visible = progress < 1.0
 
 # Recolour + pulse the glow to signal whether THIS card is affordable right now.
 func _set_affordable(can: bool) -> void:
 	if _afford_inited and can == _affordable:
 		return
+	# Just crossed into affordable mid-game (not the initial paint at game start)?
+	# Flash the card as a "you can afford this now!" cue.
+	var just_afforded := _afford_inited and can and not _affordable
 	_afford_inited = true
 	_affordable = can
+	if just_afforded:
+		afford_pop()
 	if _glow == null:
 		return
 	if _glow_tween != null and _glow_tween.is_valid():

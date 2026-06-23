@@ -147,7 +147,7 @@ func _apply_tint() -> void:
 		return
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(0.2, 0.45, 0.95, 0.22) if team == 0 else Color(0.9, 0.2, 0.2, 0.22)
+	mat.albedo_color = Color(0.2, 0.45, 0.95, 0.22) if team == 0 else Color(0.95, 0.14, 0.14, 0.3)
 	mesh.material_overlay = mat
 
 # Visual deck height: 0 on flat ground, an arc while crossing a bridge (manager-driven).

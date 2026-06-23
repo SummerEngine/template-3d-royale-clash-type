@@ -78,7 +78,7 @@ func _apply_tint() -> void:
 		return
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(0.2, 0.45, 0.95, 0.18) if team == 0 else Color(0.9, 0.2, 0.2, 0.18)
+	mat.albedo_color = Color(0.2, 0.45, 0.95, 0.18) if team == 0 else Color(0.95, 0.14, 0.14, 0.26)
 	mesh.material_overlay = mat
 
 func _add_health_bar() -> void:

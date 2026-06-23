@@ -15,7 +15,7 @@ extends Node3D
 @export var damage: float = 8.0
 @export var move_speed: float = 2.2       # units/sec
 @export var turn_speed: float = 6.0       # yaw lerp factor
-@export var attack_range: float = 0.9
+@export var attack_range: float = 1.1     # must exceed `radius` (0.91): structures hard-push units out to radius+unit.radius, so a shorter reach can never connect
 @export var attack_cooldown: float = 1.1
 @export var aggro_radius: float = 7.0
 @export var radius: float = 0.91          # soft-collision radius; read by manager (0.7 base, +30% to match the +30% model scale)
@@ -159,7 +159,7 @@ func _apply_tint() -> void:
 		return
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(0.2, 0.45, 0.95, 0.22) if team == 0 else Color(0.9, 0.2, 0.2, 0.22)
+	mat.albedo_color = Color(0.2, 0.45, 0.95, 0.22) if team == 0 else Color(0.95, 0.14, 0.14, 0.3)
 	mesh.material_overlay = mat
 
 # Visual deck height: 0 on flat ground, an arc while crossing a bridge (manager-driven).

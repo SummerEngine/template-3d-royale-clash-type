@@ -25,8 +25,9 @@ extends Node3D
 @export var build_anim_speed: float = 2.0 # play the hammer "build" clip this much faster
 @export var build_time: float = 5.0       # seconds of hammering before the pump structure appears
 @export var pump_scale: float = 2.4       # uniform scale of the elixir pump (+20% visual; collision = pump_radius)
-@export var pump_radius: float = 0.3      # small push-out radius so troops brush past; only shoved if nearly on top
+@export var pump_radius: float = 0.18     # small push-out radius so troops brush past (visual stays pump_scale)
 @export var site_offset: float = 1.6      # how far ahead (toward the enemy) to plant the half-finished pump
+@export var side_offset: float = 2.5      # how far to the side (toward the outer flank) to plant it, off the central lane
 @export var moat_clear: float = 2.8       # won't build if the pump would land within this of the moat centre
 @export var forward_step: float = 6.0     # distance marched toward the enemy before building the next pump
 @export var field_limit: float = 18.0     # keep build spots just inside the island walls so they stay reachable
@@ -202,13 +203,7 @@ func _spawn_site() -> void:
 	var host := get_parent()
 	if host == null:
 		return
-	var dir := _enemy_goal() - global_position
-	dir.y = 0.0
-	if dir.length() < 0.001:
-		dir = Vector3.FORWARD
-	dir = dir.normalized()
-	var site_pos := global_position + dir * site_offset
-	site_pos.y = 0.0
+	var site_pos := _site_target()
 	var s = ps.instantiate()
 	s.set_script(SITE)
 	host.add_child(s)
@@ -290,17 +285,30 @@ func _enemy_goal() -> Vector3:
 # True when no existing pump crowds our current position, so we keep marching to
 # find clear ground instead of stacking pumps on top of each other.
 func _spot_is_clear() -> bool:
-	# Never plant where the pump would land in the moat (water or a bridge) — check
-	# the prospective site spot, a step ahead toward the enemy.
+	# Validate the ACTUAL site spot (offset to the side, off the lane): never in the
+	# moat or on a bridge, and not crowding an existing building.
+	var spot := _site_target()
 	if is_instance_valid(_manager) and _manager.has_method("over_moat"):
-		var dir := _enemy_goal() - global_position
-		dir.y = 0.0
-		dir = dir.normalized() if dir.length() > 0.001 else Vector3.FORWARD
-		if _manager.over_moat(global_position + dir * site_offset, moat_clear):
+		if _manager.over_moat(spot, moat_clear):
 			return false
 	if _manager != null and _manager.has_method("pump_near"):
-		return not _manager.pump_near(global_position, pump_spacing)
+		return not _manager.pump_near(spot, pump_spacing)
 	return true
+
+# The spot the pump is actually raised on: a step ahead and a tiny bit off to the
+# side toward the outer flank, so pumps line the edges instead of clogging the
+# central lane. Validation (_spot_is_clear) and placement (_spawn_site) share this.
+func _site_target() -> Vector3:
+	var fwd := _enemy_goal() - global_position
+	fwd.y = 0.0
+	fwd = fwd.normalized() if fwd.length() > 0.001 else Vector3.FORWARD
+	var side := Vector3(fwd.z, 0.0, -fwd.x)
+	var radial := Vector3(global_position.x, 0.0, global_position.z)
+	if side.dot(radial) < 0.0:
+		side = -side   # point toward the outer flank (away from the map centre)
+	var spot := global_position + fwd * site_offset + side * side_offset
+	spot.y = 0.0
+	return spot
 
 # --- Hammer equip: attach to the hand bone via a BoneAttachment3D. Loaded at
 # runtime (not preloaded) so the unit still works before the hammer asset exists.
@@ -329,7 +337,7 @@ func _apply_tint() -> void:
 		return
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(0.2, 0.45, 0.95, 0.22) if team == 0 else Color(0.9, 0.2, 0.2, 0.22)
+	mat.albedo_color = Color(0.2, 0.45, 0.95, 0.22) if team == 0 else Color(0.95, 0.14, 0.14, 0.3)
 	mesh.material_overlay = mat
 
 # Visual deck height: 0 on flat ground, an arc while crossing a bridge (manager-driven).

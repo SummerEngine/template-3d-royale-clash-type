@@ -10,9 +10,9 @@ extends CanvasLayer
 ## Contract: bind(player_base, enemy_base) is called by the battle manager BEFORE
 ## add_child(). Each base exposes: var hp, var max_hp, var alive, var team.
 
-const MARGIN := 28.0
-const BAR_W := 380.0
-const BAR_H := 28.0
+const MARGIN := 24.0
+const CENTER_GAP := 20.0   # gap between the two half-width bars at screen center
+const BAR_H := 26.0
 const PANEL_H := 72.0
 const DANGER_FRAC := 0.30
 
@@ -54,6 +54,8 @@ func _update(refs: Dictionary, base) -> void:
 	var holder = refs["holder"]
 	var style = refs["style"]
 	var accent: Color = refs["accent"]
+	# Bar width is dynamic (half the screen), so keep the pulse scaling centered.
+	holder.pivot_offset = holder.size * 0.5
 
 	var maxhp := float(base.max_hp)
 	var alive := bool(base.alive)
@@ -101,21 +103,21 @@ func _build_bar(title: String, accent: Color, left_side: bool) -> Dictionary:
 	# Holder pinned to a top screen corner; we scale this whole node to pulse.
 	var holder := Control.new()
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	holder.pivot_offset = Vector2(BAR_W * 0.5, PANEL_H * 0.5)
-	# Both bars ride the top of the screen at the same height; left_side picks the corner.
+	# Each bar takes half the screen width (minus margins and a center gap), so the
+	# two can never overlap no matter the resolution / aspect. Both ride the top.
 	holder.anchor_top = 0.0
 	holder.anchor_bottom = 0.0
 	holder.offset_top = MARGIN
 	holder.offset_bottom = MARGIN + PANEL_H
 	if left_side:
 		holder.anchor_left = 0.0
-		holder.anchor_right = 0.0
+		holder.anchor_right = 0.5
 		holder.offset_left = MARGIN
-		holder.offset_right = MARGIN + BAR_W
+		holder.offset_right = -CENTER_GAP * 0.5
 	else:
-		holder.anchor_left = 1.0
+		holder.anchor_left = 0.5
 		holder.anchor_right = 1.0
-		holder.offset_left = -(MARGIN + BAR_W)
+		holder.offset_left = CENTER_GAP * 0.5
 		holder.offset_right = -MARGIN
 	add_child(holder)
 
