@@ -11,6 +11,7 @@ extends Control
 #       └── BackButton (TextureButton)
 
 const SETTINGS_PATH := "user://settings.cfg"
+const MAIN_SCENE := "res://scenes/main.tscn"
 
 # Button feel: a quick scale + tint on hover and press, plus a click on release.
 const HOVER_SCALE := 1.05
@@ -28,6 +29,10 @@ var _theme: AudioStreamPlayer   # looping main-menu theme on the Music bus
 var _feel_tweens := {}   # button -> active Tween, so a new state cancels the old
 
 func _ready() -> void:
+	# Warm the battle scene (and every GLB/texture it pulls in) on a background
+	# thread while the menu sits idle, so tapping Start is an instant switch
+	# instead of a synchronous load stall. Kicked off first to maximize headroom.
+	ResourceLoader.load_threaded_request(MAIN_SCENE)
 	options_panel.visible = false
 	$Buttons/StartButton.pressed.connect(_on_start)
 	$Buttons/OptionsButton.pressed.connect(_on_options)
@@ -60,7 +65,15 @@ func _ready() -> void:
 	_add_title()
 
 func _on_start() -> void:
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	# Grab the background-loaded scene. If the load finished (it usually has by the
+	# time the player taps Start) this returns instantly; if not, it blocks only for
+	# whatever's left — never slower than the old synchronous load. Switch to the
+	# in-memory PackedScene so no disk/import work happens during the transition.
+	var pack: Resource = ResourceLoader.load_threaded_get(MAIN_SCENE)
+	if pack is PackedScene:
+		get_tree().change_scene_to_packed(pack)
+	else:
+		get_tree().change_scene_to_file(MAIN_SCENE)
 
 func _on_options() -> void:
 	options_panel.visible = true
