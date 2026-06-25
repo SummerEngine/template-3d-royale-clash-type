@@ -43,10 +43,11 @@ func take_damage(amount: float) -> void:
 	if not alive:
 		return
 	hp -= amount
-	HITFX.play(self, _find_mesh_instance(self), scale, false)
+	HITFX.play(self, _find_mesh_instance(self), scale, false, amount)
 	SFX.play(self, "res://audio/house_hit")
 	if hp <= 0.0:
 		alive = false
+		Juice.boom(global_position, 1.6)   # the big one: King falls -> max shake + slow-mo + debris
 		emit_signal("destroyed", team)
 		print("[base] team %d destroyed" % team)
 		visible = false

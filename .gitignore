@@ -8,3 +8,6 @@
 project.godot.bak
 *.tmp
 .DS_Store
+
+# Raw Meshy rig downloads (already unpacked into models/) — keep them out of history
+Meshy_AI_*.zip

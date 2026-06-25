@@ -60,10 +60,10 @@ material_override = SubResource("Material_moat")
 mesh = SubResource("BoxMesh_moat")
 
 [node name="BridgeA" parent="." unique_id=771122335 instance=ExtResource("9_bridge")]
-transform = Transform3D(3.889, 0, -6.0668, 0, 5.5, 0, 3.889, 0, 6.0668, 6.2933, -1, -6.2933)
+transform = Transform3D(3.889, 0, -6.97682, 0, 5.5, 0, 3.889, 0, 6.97682, 6.05, -1, -6.05)
 
 [node name="BridgeB" parent="." unique_id=771122336 instance=ExtResource("9_bridge")]
-transform = Transform3D(3.889, 0, -6.0668, 0, 5.5, 0, 3.889, 0, 6.0668, -6.2933, -1, 6.2933)
+transform = Transform3D(3.889, 0, -6.97682, 0, 5.5, 0, 3.889, 0, 6.97682, -6.05, -1, 6.05)
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=1728543]
 transform = Transform3D(0.81915206, 0.43938506, -0.36868784, 0, 0.64278764, 0.76604444, 0.57357645, -0.62750685, 0.5265408, 0, 0, 0)
@@ -76,7 +76,7 @@ environment = SubResource("Environment_0wfyh")
 [node name="Camera3D" type="Camera3D" parent="." unique_id=638405901]
 transform = Transform3D(-0.7071068, 0.5, -0.5, 0, 0.70710677, 0.70710677, 0.7071068, 0.5, -0.5, -36, 47.353218, -36)
 current = true
-fov = 40.0
+fov = 44.0
 
 [node name="House" parent="." unique_id=27933716 instance=ExtResource("3_sugp2")]
 transform = Transform3D(5.656854, 0, 5.656854, 0, 8, 0, -5.656854, 0, 5.656854, -14, 0, -14)
@@ -88,20 +88,20 @@ script = ExtResource("4_base")
 team = 1
 
 [node name="TowerP_L" parent="." unique_id=553804457 instance=ExtResource("8_crtwr")]
-transform = Transform3D(4.242641, 0, 4.242641, 0, 6, 0, -4.242641, 0, 4.242641, -1.27208, 0, -14)
+transform = Transform3D(4.242641, 0, 4.242641, 0, 6, 0, -4.242641, 0, 4.242641, -1.8378, 0, -13.4343)
 script = ExtResource("7_tower")
 
 [node name="TowerP_R" parent="." unique_id=1636169128 instance=ExtResource("8_crtwr")]
-transform = Transform3D(4.242641, 0, 4.242641, 0, 6, 0, -4.242641, 0, 4.242641, -14, 0, -1.27208)
+transform = Transform3D(4.242641, 0, 4.242641, 0, 6, 0, -4.242641, 0, 4.242641, -13.4343, 0, -1.8378)
 script = ExtResource("7_tower")
 
 [node name="TowerE_L" parent="." unique_id=394934083 instance=ExtResource("8_crtwr")]
-transform = Transform3D(-4.242641, 0, -4.242641, 0, 6, 0, 4.242641, 0, -4.242641, 1.27208, 0, 14)
+transform = Transform3D(-4.242641, 0, -4.242641, 0, 6, 0, 4.242641, 0, -4.242641, 1.8378, 0, 13.4343)
 script = ExtResource("7_tower")
 team = 1
 
 [node name="TowerE_R" parent="." unique_id=1108829119 instance=ExtResource("8_crtwr")]
-transform = Transform3D(-4.242641, 0, -4.242641, 0, 6, 0, 4.242641, 0, -4.242641, 14, 0, 1.27208)
+transform = Transform3D(-4.242641, 0, -4.242641, 0, 6, 0, 4.242641, 0, -4.242641, 13.4343, 0, 1.8378)
 script = ExtResource("7_tower")
 team = 1
 

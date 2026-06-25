@@ -17,7 +17,7 @@ static func _stream(base_path: String) -> AudioStream:
 	return null
 
 # ctx: any node currently in the tree (used to reach the SceneTree).
-static func play(ctx: Node, base_path: String, volume_db: float = 0.0, pitch_var: float = 0.06) -> void:
+static func play(ctx: Node, base_path: String, volume_db: float = 0.0, pitch_var: float = 0.06, pitch: float = 1.0) -> void:
 	if not is_instance_valid(ctx) or not ctx.is_inside_tree():
 		return
 	var stream := _stream(base_path)
@@ -28,7 +28,7 @@ static func play(ctx: Node, base_path: String, volume_db: float = 0.0, pitch_var
 	p.volume_db = volume_db
 	if AudioServer.get_bus_index(&"SFX") != -1:
 		p.bus = &"SFX"   # routed through the SFX bus so the options slider controls it
-	p.pitch_scale = 1.0 + randf_range(-pitch_var, pitch_var)
+	p.pitch_scale = pitch + randf_range(-pitch_var, pitch_var)
 	# Parent to the tree root so the sound finishes even if ctx frees (deaths).
 	ctx.get_tree().root.add_child(p)
 	p.finished.connect(p.queue_free)

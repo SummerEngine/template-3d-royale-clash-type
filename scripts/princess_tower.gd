@@ -11,7 +11,7 @@ extends Node3D
 # the targeting / push-out / cleanup logic is reused with no manager changes.
 
 @export var team: int = 0          # 0 = player (blue), 1 = enemy (red)
-@export var max_hp: float = 140.0  # tankier than a unit, softer than the King (220)
+@export var max_hp: float = 150.0  # tankier than a unit, softer than the King (220)
 @export var radius: float = 2.0    # targeting / push-out radius (main base is 2.772 at 8x; this is ~6x)
 @export var fade_time: float = 0.7 # crumble duration on death
 
@@ -39,7 +39,7 @@ func take_damage(amount: float) -> void:
 	if not alive:
 		return
 	hp -= amount
-	HITFX.play(self, _find_mesh_instance(self), Vector3.ONE * _rest_scale)
+	HITFX.play(self, _find_mesh_instance(self), Vector3.ONE * _rest_scale, true, amount)
 	SFX.play(self, "res://audio/house_hit")
 	if hp <= 0.0:
 		alive = false   # manager skips dead structures for targeting/push-out, drops them once freed
@@ -47,6 +47,7 @@ func take_damage(amount: float) -> void:
 
 # Crumble and free. Notably does NOT emit any game-ending signal — the King lives on.
 func _die() -> void:
+	Juice.boom(global_position, 1.1)   # shake + slow-mo + debris when a tower falls
 	var hb := get_node_or_null("HealthBar")
 	if hb:
 		hb.visible = false

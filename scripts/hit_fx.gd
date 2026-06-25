@@ -5,9 +5,23 @@
 # Call: HitFx.play(self, _find_mesh_instance(self), Vector3.ONE * visual_scale)
 extends RefCounted
 
-static func play(body: Node3D, mesh: MeshInstance3D, base_scale: Vector3, pop: bool = true) -> void:
+static func play(body: Node3D, mesh: MeshInstance3D, base_scale: Vector3, pop: bool = true, amount: float = 0.0) -> void:
 	if not is_instance_valid(body):
 		return
+
+	# --- Juice hub: floating damage number on every hit; camera shake + a global
+	# freeze-frame only on HEAVY hits (chip damage in a swarm must not shake/stutter
+	# the screen). A quick recoil tilt on units (not structures, which pass pop=false).
+	if amount > 0.0:
+		var heavy := amount >= Juice.HEAVY_HIT
+		Juice.damage_number(body.global_position, amount, heavy)
+		if heavy:
+			Juice.shake(Juice.SHAKE_HEAVY)
+			Juice.hitstop(Juice.HITSTOP_HEAVY)
+	if pop and is_instance_valid(mesh):
+		var rt := mesh.create_tween()
+		rt.tween_property(mesh, "rotation:z", 0.12, 0.04)
+		rt.tween_property(mesh, "rotation:z", 0.0, 0.16).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
 	# 1) Bright white flash on the hit body's mesh (~0.07s), then restore.
 	if is_instance_valid(mesh):

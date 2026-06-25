@@ -14,7 +14,7 @@ extends Node3D
 #     builds another — on and on until it's killed.
 
 # --- Tunables (designer-balanced; no clamps/floors added) ---
-@export var max_hp: float = 50.0
+@export var max_hp: float = 35.0
 @export var move_speed: float = 1.9       # units/sec
 @export var turn_speed: float = 6.0       # yaw lerp factor
 @export var radius: float = 0.91          # soft-collision radius; read by manager
@@ -104,7 +104,7 @@ func take_damage(amount: float) -> void:
 	if not alive:
 		return
 	hp -= amount
-	HITFX.play(self, _find_mesh_instance(self), Vector3.ONE * visual_scale)
+	HITFX.play(self, _find_mesh_instance(self), Vector3.ONE * visual_scale, true, amount)
 	if hp <= 0.0:
 		alive = false
 		if is_instance_valid(_manager):
@@ -337,7 +337,7 @@ func _apply_tint() -> void:
 		return
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(0.2, 0.45, 0.95, 0.22) if team == 0 else Color(0.95, 0.14, 0.14, 0.3)
+	mat.albedo_color = Color(0.2, 0.45, 0.95, 0.22) if team == 0 else Color(0.95, 0.14, 0.14, 0.42)
 	mesh.material_overlay = mat
 
 # Visual deck height: 0 on flat ground, an arc while crossing a bridge (manager-driven).

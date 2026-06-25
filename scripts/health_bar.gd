@@ -14,6 +14,7 @@ var _fill_mesh: QuadMesh
 var _fill_mat: StandardMaterial3D
 var _target
 var _last_frac: float = -1.0
+var _flash_tw: Tween = null   # white damage-flash, fades back to the health color
 
 func _ready() -> void:
 	_target = get_parent()
@@ -54,6 +55,7 @@ func _process(_delta: float) -> void:
 		frac = clampf(cur / maxhp, 0.0, 1.0)
 	if is_equal_approx(frac, _last_frac):
 		return   # hp only changes on a hit; skip the rebuild on unchanged frames
+	var prev := _last_frac
 	_last_frac = frac
 	# Shrink the quad from the right while pinning its left edge: narrow the mesh
 	# and push its geometry left by the same half-amount. The node origin stays at
@@ -61,4 +63,13 @@ func _process(_delta: float) -> void:
 	_fill_mesh.size = Vector2(bar_width * frac, bar_height * 0.74)
 	_fill_mesh.center_offset = Vector3(-bar_width * 0.5 * (1.0 - frac), 0.0, 0.0)
 	# Green when healthy, red when low.
-	_fill_mat.albedo_color = Color(0.85, 0.2, 0.2).lerp(Color(0.25, 0.85, 0.25), frac)
+	var health_col := Color(0.85, 0.2, 0.2).lerp(Color(0.25, 0.85, 0.25), frac)
+	# Took damage -> punch the bar white, then fade back to the health color.
+	if prev >= 0.0 and frac < prev:
+		if _flash_tw != null and _flash_tw.is_valid():
+			_flash_tw.kill()
+		_fill_mat.albedo_color = Color.WHITE
+		_flash_tw = create_tween()
+		_flash_tw.tween_property(_fill_mat, "albedo_color", health_col, 0.18).set_ease(Tween.EASE_OUT)
+	else:
+		_fill_mat.albedo_color = health_col

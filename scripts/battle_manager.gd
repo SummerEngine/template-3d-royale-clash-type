@@ -10,6 +10,13 @@ const WIZARD_GLB := preload("res://models/wizard/Meshy_AI_Violet_Archmage_biped_
 const WIZ := preload("res://scripts/wizard.gd")
 const BUILDER_GLB := preload("res://models/dwarf/Meshy_AI_Flying_Dwarf_biped_Animation_Walking_withSkin.glb")
 const BUILDER := preload("res://scripts/builder.gd")
+# New units load at runtime (paths, not preload) so the manager still compiles before
+# their freshly-unpacked GLBs have been imported by the editor. Same base-model
+# convention as the others: the Walking GLB is the instanced body, extra clips merge in.
+const GIANT_GLB_PATH := "res://models/giant/Meshy_AI_Barbarian_Behemoth_biped_Animation_Walking_withSkin.glb"
+const GIANT_SCRIPT_PATH := "res://scripts/giant.gd"
+const BOMBER_GLB_PATH := "res://models/skeleton/Meshy_AI_Bomb_Carrying_Skeleto_biped_Animation_Walking_withSkin.glb"
+const BOMBER_SCRIPT_PATH := "res://scripts/bomber.gd"
 const ELIXIR := preload("res://scripts/elixir.gd")
 const ELIXIR_UI := preload("res://scripts/elixir_ui.gd")
 const SFX := preload("res://scripts/sfx.gd")
@@ -19,6 +26,8 @@ const HOUSE_HUD := preload("res://scripts/house_hud.gd")
 const CAMERA_PAN := preload("res://scripts/camera_pan.gd")
 const DEPLOY_CONTROLLER := preload("res://scripts/deploy_controller.gd")
 const WIN_SCREEN := preload("res://scripts/win_screen.gd")
+const CARD_CATALOG := preload("res://scripts/card_catalog.gd")
+const PAUSE_MENU := preload("res://scripts/pause_menu.gd")
 
 @export var player_base_path: NodePath
 @export var enemy_base_path: NodePath
@@ -43,6 +52,10 @@ const WIN_SCREEN := preload("res://scripts/win_screen.gd")
 @export var spawn_cost: float = 2.0              # elixir cost per barbarian
 @export var wizard_spawn_cost: float = 3.0       # elixir cost per wizard (also the enemy's "wait for 3" gate)
 @export var builder_spawn_cost: float = 4.0      # elixir cost per builder
+@export var giant_spawn_cost: float = 4.0        # elixir cost per giant (enemy banks to this for one)
+@export var bomber_spawn_cost: float = 1.0       # elixir cost per bomber (cheap, fragile suicide unit)
+@export var enemy_bomber_chance: float = 0.12    # P(bomber) on an enemy purchase roll
+@export var enemy_giant_chance: float = 0.08     # P(giant) on an enemy purchase roll (builder gets the remainder)
 
 const SPAWN_CARD_GAP := 48.0   # px gap between spawn cards (clears both glow halos)
 
@@ -107,6 +120,10 @@ func _ready() -> void:
 	# Subtle swipe-to-pan camera (drags a little, stays where you leave it).
 	_setup_camera_pan()
 
+	# Register the game-feel hub: the pan node drives camera shake; this manager
+	# (a live Node) hosts world-space damage numbers / debris and hitstop timers.
+	Juice.setup(_cam_pan, self)
+
 	# Spawn both squads, each clustered in front of its own base.
 	spawn_squad(0, _player_base, _enemy_base)
 	spawn_squad(1, _enemy_base, _player_base)
@@ -117,7 +134,13 @@ func _ready() -> void:
 	_setup_elixir()
 	_build_spawn_cards()
 	_start_enemy_spawner()
+	# In-match pause button (corner) + "PAUSED" overlay (Continue / Menu).
+	add_child(PAUSE_MENU.new())
 	SFX.play(self, "res://audio/gong", -2.0, 0.0)   # ceremonial gong to kick off the match
+	# Announcer "FIGHT!" a beat after the gong (non-blocking, so _ready continues).
+	get_tree().create_timer(0.4).timeout.connect(func() -> void:
+		if is_instance_valid(self):
+			SFX.play(self, "res://audio/announcer_fight", 2.0, 0.0, 0.64))
 
 	# Collapse the decorative arena walls + corner towers into MultiMesh batches
 	# (32 static draw calls -> 2). Purely visual; gameplay nodes are untouched.
@@ -227,6 +250,15 @@ func spawn_one_wizard(team: int, own_base: Node3D, enemy_base: Node3D) -> void:
 func spawn_one_builder(team: int, own_base: Node3D, enemy_base: Node3D) -> void:
 	_make_builder(team, enemy_base, _front_spawn_pos(own_base))
 
+# Spawn a single giant near own_base (front, small jitter). Uses the generic typed
+# path with the giant's runtime-loaded GLB + script (no preload — see the consts).
+func spawn_one_giant(team: int, own_base: Node3D, enemy_base: Node3D) -> void:
+	_make_typed(team, enemy_base, _front_spawn_pos(own_base), load(GIANT_GLB_PATH), load(GIANT_SCRIPT_PATH))
+
+# Spawn a single bomber near own_base (front, small jitter).
+func spawn_one_bomber(team: int, own_base: Node3D, enemy_base: Node3D) -> void:
+	_make_typed(team, enemy_base, _front_spawn_pos(own_base), load(BOMBER_GLB_PATH), load(BOMBER_SCRIPT_PATH))
+
 # Instantiate one barbarian, wire it up, and register it. Per the contract:
 # setup() BEFORE add_child(), then global_position AFTER add_child().
 func _make_unit(team: int, enemy_base: Node3D, spawn_pos: Vector3) -> void:
@@ -335,6 +367,59 @@ func get_nearest_enemy(from_pos: Vector3, my_team: int) -> Node3D:
 			best_d = pd
 			best = pn
 	return best
+
+# Nearest enemy STRUCTURE (princess tower / elixir pump — both register through the
+# _pumps channel) to `from_pos`, or null. Used by the Giant, which ignores units and
+# only smashes buildings. The King base is handled by the caller (it isn't a pump).
+func get_nearest_enemy_structure(from_pos: Vector3, my_team: int) -> Node3D:
+	var best: Node3D = null
+	var best_d: float = INF
+	for pe in _pumps:
+		if int(pe["team"]) == my_team:
+			continue
+		var pn = pe["node"]
+		if not is_instance_valid(pn) or not pn.alive:
+			continue
+		var to: Vector3 = pn.global_position - from_pos
+		to.y = 0.0
+		var d := to.length()
+		if d < best_d:
+			best_d = d
+			best = pn
+	return best
+
+# Area-of-effect blast centered at `center`: deal `amount` to every ENEMY unit and
+# every ENEMY building (princess tower / pump via _pumps, plus the enemy King base)
+# whose horizontal distance is within `radius`. Used by the Bomber's suicide attack.
+func explode_damage(center: Vector3, radius: float, amount: float, my_team: int) -> void:
+	var r2 := radius * radius
+	# Enemy units.
+	var enemies: Array = units[1 - my_team]
+	for u in enemies:
+		if not is_instance_valid(u) or not u.alive:
+			continue
+		var dx: float = u.global_position.x - center.x
+		var dz: float = u.global_position.z - center.z
+		if dx * dx + dz * dz <= r2:
+			u.take_damage(amount)
+	# Enemy structures (towers + pumps).
+	for pe in _pumps:
+		if int(pe["team"]) == my_team:
+			continue
+		var pn = pe["node"]
+		if not is_instance_valid(pn) or not pn.alive:
+			continue
+		var pdx: float = pn.global_position.x - center.x
+		var pdz: float = pn.global_position.z - center.z
+		if pdx * pdx + pdz * pdz <= r2:
+			pn.take_damage(amount)
+	# Enemy King base.
+	var eb = _player_base if my_team == 1 else _enemy_base
+	if is_instance_valid(eb) and eb.alive:
+		var bdx: float = eb.global_position.x - center.x
+		var bdz: float = eb.global_position.z - center.z
+		if bdx * bdx + bdz * bdz <= r2:
+			eb.take_damage(amount)
 
 # A unit reports its death; remove it from whichever team array holds it.
 func notify_died(unit: Node) -> void:
@@ -552,16 +637,14 @@ func _perf_tick(delta: float) -> void:
 	# fps/proc so we can verify the targeting-throttle fix on the next play.
 
 # --- Player spawn cards (mobile-friendly, bottom-right corner) ---
-# Three SpawnCard slots in a row (right -> left): barbarian (costs 1), wizard
-# (costs 2), builder (costs 2). Each card owns its glow halo, press juice, and
-# afford pulse; the gameplay (afford/spend/spawn) stays here via the callbacks.
+# Three SpawnCard slots in a row (right -> left), built from the player's saved
+# loadout: which 3 cards (of all in card_catalog.gd) sit in the hotbar is chosen on
+# the Army screen and persisted to settings.cfg. Each card owns its glow halo,
+# press juice, and afford pulse; gameplay (afford/spend/spawn) stays here.
 func _build_spawn_cards() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
 
-	var barb_tex := _load_texture("res://ui/barbarian_button.png")
-	var wiz_tex := _load_texture("res://ui/wizard_button.png")
-	var builder_tex := _load_texture("res://ui/builder_button.png")
 	var drop_tex := _load_texture("res://ui/elixir_drop.png")
 
 	# One shared drag-to-deploy controller (owns the ghost, placement, commit).
@@ -569,35 +652,42 @@ func _build_spawn_cards() -> void:
 	deploy.bind(self, get_viewport().get_camera_3d(), _player_base, _cam_pan)
 	add_child(deploy)
 
-	# All three cards use drop-free art, so each overlays its cost as drops:
-	# barbarian 1, wizard 2, builder 2. On press each hands the controller a
-	# unit_def: the model for the ghost + a positional spawn fn.
-	var barb := SPAWN_CARD.new()
-	layer.add_child(barb)
-	_place_card(barb, 0)   # slot 0 = rightmost corner
-	barb.setup(spawn_button_size, barb_tex, spawn_cost, int(spawn_cost), drop_tex, _elixir, deploy,
-		{ "glb": UNIT_GLB, "scale": 1.3, "spawn_fn": spawn_one_at })
+	# Build one card per chosen loadout id, looked up in the catalog. Each card
+	# hands the controller a unit_def: the model for the ghost + a positional spawn
+	# fn (the generic spawn_one_typed_at, bound to this card's glb + script).
+	var loadout: Array = CARD_CATALOG.load_loadout()
+	# Size the cards to the actual screen width: the row fills the viewport minus an
+	# even margin on each side, so the cards fit perfectly at any resolution / aspect
+	# (and scale down on narrow screens instead of overflowing).
+	var count := loadout.size()
+	var avail := get_viewport().get_visible_rect().size.x
+	var card_w := (avail - 2.0 * spawn_button_margin - float(count - 1) * SPAWN_CARD_GAP) / float(count)
+	for slot in range(count):
+		var def: Dictionary = CARD_CATALOG.by_id(str(loadout[slot]))
+		if def.is_empty():
+			continue
+		var tex := CARD_CATALOG.load_texture(def["texture"])
+		var glb = load(def["glb"])
+		var unit_script = load(def["script"])
+		var cost: float = def["cost"]
+		var card := SPAWN_CARD.new()
+		layer.add_child(card)
+		_place_card(card, slot, count, card_w)   # slot 0 = leftmost; row spans the width
+		card.setup(card_w, tex, cost, int(cost), drop_tex, _elixir, deploy,
+			{ "glb": glb, "scale": def["scale"], "spawn_fn": spawn_one_typed_at.bind(glb, unit_script) })
 
-	var wiz := SPAWN_CARD.new()
-	layer.add_child(wiz)
-	_place_card(wiz, 1)    # slot 1 = one step to the left
-	wiz.setup(spawn_button_size, wiz_tex, wizard_spawn_cost, int(wizard_spawn_cost), drop_tex, _elixir, deploy,
-		{ "glb": WIZARD_GLB, "scale": 1.3, "spawn_fn": spawn_one_wizard_at })
-
-	var builder := SPAWN_CARD.new()
-	layer.add_child(builder)
-	_place_card(builder, 2)   # slot 2 = leftmost
-	builder.setup(spawn_button_size, builder_tex, builder_spawn_cost, int(builder_spawn_cost), drop_tex, _elixir, deploy,
-		{ "glb": BUILDER_GLB, "scale": 1.3, "spawn_fn": spawn_one_builder_at })
-
-# Pin a card to the bottom-right corner, stepping `slot` cards to the left.
-func _place_card(card: Control, slot: int) -> void:
-	card.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	var right := -spawn_button_margin - float(slot) * (spawn_button_size + SPAWN_CARD_GAP)
-	card.offset_right = right
-	card.offset_left = right - spawn_button_size
+# Center the row of `count` cards (each `card_w` wide) along the bottom edge.
+# Anchored to the screen's bottom-center; total row width = viewport - 2*margin,
+# so it spans the full width with even side margins at any resolution. Cards are
+# square. slot 0 = leftmost card.
+func _place_card(card: Control, slot: int, count: int, card_w: float) -> void:
+	card.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	var total_w := float(count) * card_w + float(count - 1) * SPAWN_CARD_GAP
+	var left := -total_w * 0.5 + float(slot) * (card_w + SPAWN_CARD_GAP)
+	card.offset_left = left
+	card.offset_right = left + card_w
 	card.offset_bottom = -spawn_button_margin
-	card.offset_top = -spawn_button_margin - spawn_button_size
+	card.offset_top = -spawn_button_margin - card_w
 
 # Capture the two enemy (team-1) princess towers once, storing their world position
 # so a fallen tower's lane is still locatable after the node frees itself.
@@ -658,6 +748,19 @@ func spawn_one_wizard_at(team: int, pos: Vector3) -> void:
 
 func spawn_one_builder_at(team: int, pos: Vector3) -> void:
 	_make_builder(team, _enemy_base_for(team), pos)
+
+# Generic positional spawn used by catalog-driven hotbar cards: the card binds its
+# own glb + script, so any number of card types route through this one path.
+func spawn_one_typed_at(team: int, pos: Vector3, glb, unit_script) -> void:
+	_make_typed(team, _enemy_base_for(team), pos, glb, unit_script)
+
+func _make_typed(team: int, enemy_base: Node3D, spawn_pos: Vector3, glb, unit_script) -> void:
+	var u = glb.instantiate()
+	u.set_script(unit_script)
+	u.setup(team, self, enemy_base)
+	add_child(u)
+	u.global_position = spawn_pos
+	units[team].append(u)
 
 # --- SFX players -----------------------------------------------------------
 func _setup_audio() -> void:
@@ -797,15 +900,25 @@ func _on_enemy_brain_tick() -> void:
 	if _enemy_elixir == null or _enemy_elixir.current < wizard_spawn_cost:
 		return   # bank to 3 (affords a barb or wizard); banks further for a 4-cost builder
 	# Pick a unit type — balanced for variety. Only spawn if the roll is actually
-	# affordable, so e.g. a 4-cost builder rolled at 3 just banks toward 4 instead of
-	# spawning for free.
+	# affordable, so e.g. a 6-cost giant rolled at 3 just banks toward 6 instead of
+	# spawning for free. Thresholds are cumulative; builder gets whatever's left.
 	var r := randf()
-	if r < enemy_barb_chance:
+	var t_barb := enemy_barb_chance
+	var t_wiz := t_barb + enemy_wizard_chance
+	var t_bomber := t_wiz + enemy_bomber_chance
+	var t_giant := t_bomber + enemy_giant_chance
+	if r < t_barb:
 		if _enemy_elixir.spend(spawn_cost):
 			spawn_one(1, _enemy_base, _player_base)
-	elif r < enemy_barb_chance + enemy_wizard_chance:
+	elif r < t_wiz:
 		if _enemy_elixir.spend(wizard_spawn_cost):
 			spawn_one_wizard(1, _enemy_base, _player_base)
+	elif r < t_bomber:
+		if _enemy_elixir.spend(bomber_spawn_cost):
+			spawn_one_bomber(1, _enemy_base, _player_base)
+	elif r < t_giant:
+		if _enemy_elixir.spend(giant_spawn_cost):
+			spawn_one_giant(1, _enemy_base, _player_base)
 	else:
 		if _enemy_elixir.spend(builder_spawn_cost):
 			spawn_one_builder(1, _enemy_base, _player_base)
@@ -819,6 +932,8 @@ func _on_base_destroyed(team: int) -> void:
 		_music.stop()   # gameplay theme ends the moment the match is decided
 	var winner := 1 - team
 	_play_end_music(winner == 0)
+	# Announcer calls the result: "Victory!" for the player, "Defeat." otherwise.
+	SFX.play(self, "res://audio/announcer_victory" if winner == 0 else "res://audio/announcer_defeat", 2.0, 0.0, 0.64)
 	_show_win_banner(winner)
 
 # Play a short victory/defeat track on the Music bus (slider-controlled). Prefers a

@@ -29,6 +29,10 @@ var _house = null         # the house (base.gd); untyped for cross-script duck t
 var _top_y: float = 0.0
 var _t: float = 0.0
 
+const FLASH_DUR := 0.18
+var _last_frac: float = -1.0   # to detect damage (a drop in fill fraction)
+var _flash_t: float = 0.0      # remaining white-flash time
+
 var _frame: MeshInstance3D
 var _frame_mesh: QuadMesh
 var _frame_mat: StandardMaterial3D
@@ -123,6 +127,11 @@ func _process(delta: float) -> void:
 	if maxhp > 0.0:
 		frac = clampf(float(_house.hp) / maxhp, 0.0, 1.0)
 
+	# Took damage (fill dropped) -> start a white flash.
+	if _last_frac >= 0.0 and frac < _last_frac - 0.0001:
+		_flash_t = FLASH_DUR
+	_last_frac = frac
+
 	# Left-anchored shrink: narrow the fill and push its geometry left by half the
 	# loss, so the bar drains from a fixed left edge while billboarding.
 	_fill_mesh.size = Vector2(bar_width * frac, bar_height)
@@ -142,6 +151,10 @@ func _process(delta: float) -> void:
 		_frame_mesh.size = _frame_size()
 		_back_mesh.size = _back_size()
 		_frame_mat.albedo_color = _team_color()
+	# White damage-flash on top of whatever color the ramp/pulse produced.
+	if _flash_t > 0.0:
+		_flash_t -= delta
+		col = col.lerp(Color.WHITE, clampf(_flash_t / FLASH_DUR, 0.0, 1.0))
 	_fill_mat.albedo_color = col
 
 
