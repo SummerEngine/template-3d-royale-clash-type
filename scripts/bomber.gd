@@ -22,7 +22,7 @@ extends Node3D
 @export var radius: float = 0.91           # soft-collision radius; read by manager
 @export var visual_scale: float = 1.3      # uniform model scale (matches the rank-and-file)
 @export var trigger_range: float = 1.4     # gap to the target (plus its radius) at which it commits to the jump
-@export var explosion_radius: float = 4.5  # AoE radius of the blast (horizontal) — wide, catches whole clumps
+@export var explosion_radius: float = 6.75  # AoE radius of the blast (horizontal) — wide, catches whole clumps
 @export var explosion_damage: float = 50.0   # AoE hit
 @export var jump_anim_speed: float = 2.0   # snappier leap so it fits the ~0.6s fuse
 @export var explode_delay: float = 0.6     # time from commit to blast (also caps the leap-clip wait)
@@ -138,10 +138,11 @@ func _begin_detonation(target) -> void:
 		return
 	_detonating = true
 	set_process(false)
+	# Detonate where he commits (just a hop in place) rather than leaping onto the
+	# target — the blast was landing too far forward. The wide radius still catches it.
 	var land := global_position
 	if is_instance_valid(target):
 		_face_instant(target.global_position)
-		land = target.global_position   # leap ONTO the target so the blast lands there
 	land.y = _base_y
 	# Play the jump attack, then explode. Timed to the clip (shorter when sped up),
 	# capped at explode_delay (~0.6s); explode_delay is also the fallback with no clip.

@@ -129,8 +129,8 @@ func _build_collection() -> void:
 	wrap.anchor_right = 1.0
 	wrap.offset_left = 40.0
 	wrap.offset_right = -40.0
-	wrap.offset_top = 180.0
-	wrap.offset_bottom = 580.0
+	wrap.offset_top = 260.0
+	wrap.offset_bottom = 660.0
 	add_child(wrap)
 	for def in CATALOG.all():
 		var tile := _make_tile(def)
@@ -198,34 +198,43 @@ func _build_slots() -> void:
 
 
 func _build_back() -> void:
-	var back := Button.new()
-	back.text = "BACK"
+	# Wooden menu-button look (swapped in from the options screen): a chroma-keyed
+	# button_wide.png with a brown "BACK" label.
+	var back := TextureButton.new()
+	var tex := load("res://assets/ui/button_wide.png")
+	if tex is Texture2D:
+		back.texture_normal = tex
+		back.texture_pressed = tex
+	back.ignore_texture_size = true
+	back.stretch_mode = TextureButton.STRETCH_SCALE
+	var shader = load("res://shaders/white_key.gdshader")
+	if shader is Shader:
+		var mat := ShaderMaterial.new()
+		mat.shader = shader
+		mat.set_shader_parameter("white_cut", 0.86)
+		mat.set_shader_parameter("sat_max", 0.1)
+		mat.set_shader_parameter("softness", 0.04)
+		back.material = mat
 	back.custom_minimum_size = Vector2(280, 88)
-	back.add_theme_font_size_override("font_size", 32)
-	back.add_theme_color_override("font_color", Color(1.0, 0.93, 0.78))
-	# Wooden button look to match the menu (self-contained StyleBoxes, no shader dep).
-	for state in ["normal", "hover", "pressed"]:
-		var sb := StyleBoxFlat.new()
-		var shade := 0.30
-		if state == "hover":
-			shade = 0.36
-		elif state == "pressed":
-			shade = 0.24
-		sb.bg_color = Color(shade, shade * 0.58, shade * 0.30)
-		sb.set_corner_radius_all(14)
-		sb.set_border_width_all(3)
-		sb.border_color = ACCENT
-		back.add_theme_stylebox_override(state, sb)
 	back.anchor_left = 0.5
 	back.anchor_right = 0.5
 	back.anchor_top = 1.0
 	back.anchor_bottom = 1.0
 	back.offset_left = -140.0
 	back.offset_right = 140.0
-	back.offset_top = -150.0
-	back.offset_bottom = -62.0
+	back.offset_top = -230.0
+	back.offset_bottom = -142.0
 	back.pressed.connect(_on_back)
 	add_child(back)
+	var lbl := Label.new()
+	lbl.text = "BACK"
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl.add_theme_color_override("font_color", Color(0.25, 0.13, 0.05))
+	lbl.add_theme_font_size_override("font_size", 32)
+	back.add_child(lbl)
 
 
 func _on_back() -> void:

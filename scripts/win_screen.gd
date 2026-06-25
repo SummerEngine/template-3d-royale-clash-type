@@ -94,9 +94,10 @@ func _build_result_art(root: Control, hero_path: String, banner_path: String) ->
 	hero.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hero.anchor_left = 0.5; hero.anchor_right = 0.5; hero.anchor_top = 0.5; hero.anchor_bottom = 0.5
 	hero.offset_left = -260; hero.offset_right = 260
-	hero.offset_top = -200; hero.offset_bottom = 320
+	hero.offset_top = -360; hero.offset_bottom = 160
 	hero.pivot_offset = Vector2(260, 260)
 	root.add_child(hero)
+	hero.z_index = 1   # draw the hero in front of the banner/result text
 	hero.modulate.a = 0.0
 	hero.scale = Vector2(0.5, 0.5)
 	var hw := create_tween()
@@ -114,7 +115,7 @@ func _build_result_art(root: Control, hero_path: String, banner_path: String) ->
 	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	banner.anchor_left = 0.5; banner.anchor_right = 0.5; banner.anchor_top = 0.0; banner.anchor_bottom = 0.0
 	banner.offset_left = -300; banner.offset_right = 300
-	banner.offset_top = 70; banner.offset_bottom = 670
+	banner.offset_top = 20; banner.offset_bottom = 620
 	banner.pivot_offset = Vector2(300, 300)
 	root.add_child(banner)
 	banner.scale = Vector2(0.2, 0.2)
@@ -141,7 +142,7 @@ func _build_button(root: Control) -> void:
 		btn.material = mat
 	btn.anchor_left = 0.5; btn.anchor_right = 0.5; btn.anchor_top = 1.0; btn.anchor_bottom = 1.0
 	btn.offset_left = -190; btn.offset_right = 190
-	btn.offset_top = -210; btn.offset_bottom = -70
+	btn.offset_top = -260; btn.offset_bottom = -120
 	btn.pressed.connect(_on_continue)
 	root.add_child(btn)
 
@@ -176,7 +177,7 @@ func _build_xp_panel(root: Control) -> void:
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 10)
 	box.anchor_left = 0.5; box.anchor_right = 0.5
-	box.anchor_top = 0.58; box.anchor_bottom = 0.58
+	box.anchor_top = 0.63; box.anchor_bottom = 0.63
 	box.offset_left = -230; box.offset_right = 230
 	box.offset_top = 0; box.offset_bottom = 170
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
