@@ -9,7 +9,7 @@ extends Node3D
 # Spawned by the Builder: instantiate the glb, set_script(this), add_child() +
 # global_position, then setup(team, manager, scale).
 
-@export var max_hp: float = 150.0           # finished pump; the half-built site has 75
+@export var max_hp: float = 80.0            # finished pump; the half-built site has 40
 @export var radius: float = 1.6             # targeting / attack-range radius read by attackers
 @export var generate_interval: float = 10.0 # seconds between elixir ticks
 @export var generate_amount: float = 1.0    # elixir produced per tick
@@ -57,7 +57,7 @@ func take_damage(amount: float) -> void:
 	if not alive:
 		return
 	hp -= amount
-	HITFX.play(self, _find_mesh_instance(self), Vector3.ONE * _rest_scale)
+	HITFX.play(self, _find_mesh_instance(self), Vector3.ONE * _rest_scale, true, amount)
 	if hp <= 0.0:
 		alive = false   # manager skips dead pumps for targeting/push-out and drops them once freed
 		_die()

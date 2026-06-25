@@ -9,7 +9,7 @@ extends Node3D
 # Spawned by the Builder: instantiate the half-pump glb, set_script(this),
 # add_child() + global_position, then setup(team, manager, scale, radius).
 
-@export var max_hp: float = 75.0      # half the finished pump (150) — it's incomplete
+@export var max_hp: float = 40.0      # half the finished pump (80) — it's incomplete
 @export var radius: float = 1.6       # targeting / push-out radius (overridden by setup)
 @export var fade_time: float = 0.6    # crumble duration on death
 
@@ -47,7 +47,7 @@ func take_damage(amount: float) -> void:
 	if not alive:
 		return
 	hp -= amount
-	HITFX.play(self, _find_mesh_instance(self), Vector3.ONE * _rest_scale)
+	HITFX.play(self, _find_mesh_instance(self), Vector3.ONE * _rest_scale, true, amount)
 	if hp <= 0.0:
 		alive = false   # manager skips dead sites for targeting/push-out, drops them once freed
 		_die()
