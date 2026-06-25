@@ -60,10 +60,10 @@ material_override = SubResource("Material_moat")
 mesh = SubResource("BoxMesh_moat")
 
 [node name="BridgeA" parent="." unique_id=771122335 instance=ExtResource("9_bridge")]
-transform = Transform3D(3.889, 0, -6.97682, 0, 5.5, 0, 3.889, 0, 6.97682, 6.05, -1, -6.05)
+transform = Transform3D(3.889, 0, -6.97682, 0, 5.5, 0, 3.889, 0, 6.97682, 6.0146, -1, -6.0146)
 
 [node name="BridgeB" parent="." unique_id=771122336 instance=ExtResource("9_bridge")]
-transform = Transform3D(3.889, 0, -6.97682, 0, 5.5, 0, 3.889, 0, 6.97682, -6.05, -1, 6.05)
+transform = Transform3D(3.889, 0, -6.97682, 0, 5.5, 0, 3.889, 0, 6.97682, -6.0146, -1, 6.0146)
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=1728543]
 transform = Transform3D(0.81915206, 0.43938506, -0.36868784, 0, 0.64278764, 0.76604444, 0.57357645, -0.62750685, 0.5265408, 0, 0, 0)

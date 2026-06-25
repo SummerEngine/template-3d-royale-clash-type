@@ -11,7 +11,77 @@ extends RefCounted
 ## character models into memory.
 
 const SETTINGS_PATH := "user://settings.cfg"
-const DEFAULT_LOADOUT := ["barbarian", "wizard", "builder"]
+const DEFAULT_LOADOUT := ["giant", "wizard", "barbarian"]
+
+# --- Unlocks / gold --------------------------------------------------------
+const UNLOCK_COST := 100                          # gold to unlock a locked card
+const LOCKED_DEFAULT := ["builder", "bomber", "arrows"]   # cards that start locked
+# Meeting-demo reset: on each app launch, relock the default-locked cards and refill
+# gold to DEMO_START_GOLD, so every tester starts fresh and can unlock + try them.
+# Set DEMO_RESET=false to restore the persistent economy (earned coins + permanent
+# unlocks that carry across launches).
+const DEMO_RESET := false
+const DEMO_START_GOLD := 250
+
+# Guarded by a static flag: resets on app restart but survives menu<->match scene
+# changes within a session, so the demo reset runs once per launch (not per menu visit).
+static var _session_inited := false
+
+# Call once at app entry (menu _ready). With DEMO_RESET on, relocks the default cards
+# and tops gold up so testers always start able to unlock both.
+static func ensure_session() -> void:
+	if _session_inited:
+		return
+	_session_inited = true
+	if not DEMO_RESET:
+		return
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	cfg.set_value("unlocks", "ids", [])              # relock everything default-locked
+	cfg.set_value("profile", "coins", DEMO_START_GOLD)
+	cfg.save(SETTINGS_PATH)
+
+# Relock every default-locked card (clears the saved unlocks) so the unlock flow can
+# be shown off again. Does not touch gold.
+static func relock_all() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	cfg.set_value("unlocks", "ids", [])
+	cfg.save(SETTINGS_PATH)
+
+static func unlocked_ids() -> Array:
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	var raw = cfg.get_value("unlocks", "ids", [])
+	return raw if raw is Array else []
+
+# A card is locked if it's default-locked AND not yet purchased this session.
+static func is_locked(id: String) -> bool:
+	if not LOCKED_DEFAULT.has(id):
+		return false
+	return not unlocked_ids().has(id)
+
+# Gold price to unlock a card — per-card "unlock_cost" if set, else the default.
+# Change a card's price by editing its "unlock_cost" in all() above.
+static func unlock_cost(id: String) -> int:
+	return int(by_id(id).get("unlock_cost", UNLOCK_COST))
+
+# Spend gold to unlock `id`. Returns true if it's now unlocked (or already was),
+# false if the player can't afford it.
+static func try_unlock(id: String) -> bool:
+	if not is_locked(id):
+		return true
+	var cost := unlock_cost(id)
+	if Profile.get_coins() < cost:
+		return false
+	Profile.add_coins(-cost)
+	var ids := unlocked_ids()
+	ids.append(id)
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	cfg.set_value("unlocks", "ids", ids)
+	cfg.save(SETTINGS_PATH)
+	return true
 
 # Every card the game knows about. Order = collection display order.
 static func all() -> Array:
@@ -21,18 +91,16 @@ static func all() -> Array:
 			"texture": "res://ui/barbarian_button.png", "cost": 2.0, "scale": 1.3,
 			"glb": "res://models/viking/Meshy_AI_Viking_Action_Figure__biped_Animation_Walking_withSkin.glb",
 			"script": "res://scripts/barbarian.gd",
+			"flavor": "A reckless brute who charges the nearest enemy and swings until it drops. Cheap, sturdy, and always hungry for a fight.",
+			"stats": [["Role", "Melee"], ["Health", "40"], ["Damage", "8"], ["Hit speed", "1.1s"], ["Move speed", "Medium"]],
 		},
 		{
 			"id": "wizard", "name": "Wizard",
 			"texture": "res://ui/wizard_button.png", "cost": 3.0, "scale": 1.3,
 			"glb": "res://models/wizard/Meshy_AI_Violet_Archmage_biped_Animation_Walking_withSkin.glb",
 			"script": "res://scripts/wizard.gd",
-		},
-		{
-			"id": "builder", "name": "Builder",
-			"texture": "res://ui/builder_button.png", "cost": 4.0, "scale": 1.3,
-			"glb": "res://models/dwarf/Meshy_AI_Flying_Dwarf_biped_Animation_Walking_withSkin.glb",
-			"script": "res://scripts/builder.gd",
+			"flavor": "Rains fireballs from afar. Devastating at range, but fragile — keep him behind the front line.",
+			"stats": [["Role", "Ranged"], ["Health", "26"], ["Damage", "12"], ["Range", "8"], ["Move speed", "Medium"]],
 		},
 		{
 			# Giant: huge, slow, very tanky — only attacks buildings. The card's "scale"
@@ -41,13 +109,34 @@ static func all() -> Array:
 			"texture": "res://ui/giant_button.png", "cost": 4.0, "scale": 2.0,
 			"glb": "res://models/giant/Meshy_AI_Barbarian_Behemoth_biped_Animation_Walking_withSkin.glb",
 			"script": "res://scripts/giant.gd",
+			"flavor": "A lumbering behemoth that ignores troops entirely and marches straight for your towers. Slow, but nearly unstoppable.",
+			"stats": [["Role", "Tank"], ["Health", "200"], ["Damage", "30"], ["Targets", "Buildings"], ["Move speed", "Slow"]],
 		},
 		{
 			# Bomber: fast, fragile suicide unit — jumps and explodes for big AoE.
-			"id": "bomber", "name": "Bomber",
+			"id": "bomber", "name": "Bomber", "unlock_cost": 80,
 			"texture": "res://ui/skeleton_button.png", "cost": 2.0, "scale": 1.3,
 			"glb": "res://models/skeleton/Meshy_AI_Bomb_Carrying_Skeleto_biped_Animation_Walking_withSkin.glb",
 			"script": "res://scripts/bomber.gd",
+			"flavor": "Sprints in and leaps into a fiery blast that engulfs everything nearby. One use — but what a boom.",
+			"stats": [["Role", "Suicide"], ["Health", "26"], ["Damage", "50 (AoE)"], ["Blast radius", "6.75"], ["Move speed", "Fast"]],
+		},
+		{
+			"id": "builder", "name": "Builder", "unlock_cost": 180,
+			"texture": "res://ui/builder_button.png", "cost": 4.0, "scale": 1.3,
+			"glb": "res://models/dwarf/Meshy_AI_Flying_Dwarf_biped_Animation_Walking_withSkin.glb",
+			"script": "res://scripts/builder.gd",
+			"flavor": "Won't throw a punch. Plants elixir pumps to keep your war machine fed — protect him and your economy soars.",
+			"stats": [["Role", "Support"], ["Health", "35"], ["Damage", "—"], ["Builds", "Elixir pumps"], ["Move speed", "Slow"]],
+		},
+		{
+			# Arrows: a targeted SPELL (not a unit). Aimed anywhere on the field; rains
+			# a volley dealing AoE damage to enemy troops + buildings in the circle.
+			"id": "arrows", "name": "Arrows", "unlock_cost": 100,
+			"texture": "res://ui/arrows_button.png", "cost": 3.0, "scale": 1.0,
+			"kind": "spell", "radius": 4.0, "damage": 32.0,
+			"flavor": "A volley that rains down anywhere on the field, peppering everything in a wide circle. Wipes out swarms and finishes the wounded.",
+			"stats": [["Role", "Spell"], ["Damage", "32 (AoE)"], ["Radius", "4.0"], ["Aim", "Anywhere"]],
 		},
 	]
 

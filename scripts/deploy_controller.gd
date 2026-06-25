@@ -36,6 +36,8 @@ var _spawn_fn: Callable = Callable()
 var _ghost: Node3D = null
 var _ring: MeshInstance3D = null
 var _last_pos: Vector3 = Vector3.ZERO
+var _spell: bool = false        # spell mode: free-aim a target reticle anywhere on the field
+var _spell_radius: float = 4.0
 
 func bind(manager, cam: Camera3D, player_base: Node3D, cam_pan) -> void:
 	_manager = manager
@@ -51,6 +53,8 @@ func begin(_card, cost: float, unit_def: Dictionary) -> bool:
 	if _active or _manager == null or _cam == null:
 		return false
 	_cost = cost
+	_spell = unit_def.get("spell", false)
+	_spell_radius = unit_def.get("radius", 4.0)
 	_spawn_fn = unit_def.get("spawn_fn", Callable())
 	_active = true
 	_engaged = false
@@ -69,10 +73,10 @@ func release(card) -> void:
 		return
 	var do_deploy := true
 	var pos := _last_pos
-	if not _engaged:
-		pos = _line_center()        # a tap: deploy at the line center
+	if not _spell and not _engaged:
+		pos = _line_center()        # a unit tap: deploy at the line center
 	elif _over_card(card):
-		do_deploy = false           # dragged back onto the card -> cancel, no spend
+		do_deploy = false           # released back over the card -> cancel, no spend
 	if do_deploy:
 		var res: int = _manager.try_deploy(_cost, _spawn_fn, pos)
 		if res == 1 and card != null and card.has_method("success_pop"):
@@ -87,7 +91,7 @@ func _process(_delta: float) -> void:
 	var m := _mouse()
 	if not _engaged and m.distance_to(_press_mouse) > drag_threshold:
 		_engaged = true
-	if _engaged:
+	if _engaged or _spell:   # spells follow the cursor from the first frame (free aim)
 		_last_pos = _compute_pos(m)
 		_update_ghost(_last_pos)
 
@@ -121,6 +125,16 @@ func _forward_axis() -> Vector3:
 	return d.normalized() if d.length() > 0.001 else Vector3.FORWARD
 
 func _compute_pos(mouse: Vector2) -> Vector3:
+	if _spell:
+		# Spells aim ANYWHERE on the field (both halves), only clamped to the arena octagon.
+		var g := _ground_point(mouse, _last_pos)
+		g.y = 0.0
+		var goct := absf(g.x) + absf(g.z)
+		if goct > island_octagon_limit:
+			var gk := island_octagon_limit / goct
+			g.x *= gk
+			g.z *= gk
+		return g
 	var base := _player_base.global_position
 	base.y = 0.0
 	var fwd := _forward_axis()
@@ -187,23 +201,30 @@ func _over_card(card) -> bool:
 
 # --- Ghost hologram + ground ring ------------------------------------------
 func _make_ghost(unit_def: Dictionary) -> void:
-	var glb: PackedScene = unit_def.get("glb", null)
-	var sc: float = unit_def.get("scale", 1.0)
-	if glb != null:
-		_ghost = glb.instantiate()
-		_manager.add_child(_ghost)
-		_ghost.scale = Vector3.ONE * sc
-		_ghostify(_ghost)
+	var spell: bool = unit_def.get("spell", false)
+	if not spell:
+		var glb: PackedScene = unit_def.get("glb", null)
+		var sc: float = unit_def.get("scale", 1.0)
+		if glb != null:
+			_ghost = glb.instantiate()
+			_manager.add_child(_ghost)
+			_ghost.scale = Vector3.ONE * sc
+			_ghostify(_ghost)
 
 	_ring = MeshInstance3D.new()
 	var torus := TorusMesh.new()
-	torus.inner_radius = 0.85
-	torus.outer_radius = 1.15
+	if spell:
+		torus.outer_radius = _spell_radius                       # reticle matches the blast radius
+		torus.inner_radius = maxf(0.3, _spell_radius - 0.35)
+	else:
+		torus.inner_radius = 0.85
+		torus.outer_radius = 1.15
 	_ring.mesh = torus
 	var rm := StandardMaterial3D.new()
 	rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	rm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	rm.albedo_color = Color(ghost_tint.r, ghost_tint.g, ghost_tint.b, 0.75)
+	var rc: Color = Color(0.95, 0.35, 0.2) if spell else ghost_tint   # red telegraph for spells
+	rm.albedo_color = Color(rc.r, rc.g, rc.b, 0.75)
 	rm.no_depth_test = true
 	_ring.material_override = rm
 	_manager.add_child(_ring)
@@ -241,6 +262,7 @@ func _clear() -> void:
 	_ring = null
 	_active = false
 	_engaged = false
+	_spell = false
 	_spawn_fn = Callable()
 	if _cam_pan != null and _cam_pan.has_method("set_active"):
 		_cam_pan.set_active(true)

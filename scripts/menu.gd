@@ -15,6 +15,8 @@ const SETTINGS_PATH := "user://settings.cfg"
 const MAIN_SCENE := "res://scenes/main.tscn"
 const LOADOUT := preload("res://scripts/loadout.gd")
 const PROFILE := preload("res://scripts/profile.gd")
+const CARD_CATALOG := preload("res://scripts/card_catalog.gd")
+const CHEST_POPUP := preload("res://scripts/chest_popup.gd")
 
 # Button feel: a quick scale + tint on hover and press, plus a click on release.
 const HOVER_SCALE := 1.05
@@ -31,6 +33,8 @@ var _click: AudioStreamPlayer
 var _theme: AudioStreamPlayer   # looping main-menu theme on the Music bus
 var _feel_tweens := {}   # button -> active Tween, so a new state cancels the old
 var _backdrop: ColorRect   # dim layer behind the options panel (built in _style_options)
+var _coin_label: Label = null   # the coin-counter text, refreshed after a chest reward
+var _chest_popup = null         # active free-gold chest popup (blocks swiping while up)
 
 # Loading overlay (raised by Start while the battle scene finishes loading).
 var _loading := false
@@ -40,7 +44,24 @@ var _loading_label: Label
 var _load_shown := 0.0   # smoothed bar fill (eases toward the real progress)
 var _load_dots := 0.0    # drives the animated "Loading..." dots
 
+# --- Sliding pager (Menu <-> Army) ---
+# All menu content is reparented into _menu_page; the Army screen lives in _army_page
+# one screen-width to the right. Sliding/​swiping moves _pager between x=0 (menu) and
+# x=-_page_w (army).
+var _pager: Control = null
+var _menu_page: Control = null
+var _army_page: Control = null
+var _army = null
+var _page_w: float = 0.0
+var _sliding: bool = false
+var _swiping: bool = false
+var _swipe_accum: float = 0.0   # horizontal travel since press; engages past the dead zone
+const SWIPE_DEADZONE := 16.0     # px of horizontal drag before a swipe engages
+
 func _ready() -> void:
+	# Demo session reset (once per app launch): relock builder/bomber + refill gold,
+	# so every tester starts fresh. Runs before the coin badge reads the balance.
+	CARD_CATALOG.ensure_session()
 	# Warm the battle scene (and every GLB/texture it pulls in) on a background
 	# thread while the menu sits idle, so tapping Start is an instant switch
 	# instead of a synchronous load stall. Kicked off first to maximize headroom.
@@ -89,9 +110,13 @@ func _ready() -> void:
 	_add_level_badge()
 	# Persistent coin counter (top-right).
 	_add_coin_badge()
+	# Free-gold chest button, just below the coin badge.
+	_add_chest_button()
 	# Re-skin the audio options panel to match the wooden menu. Runs AFTER the title
 	# logo is added so the panel + dim backdrop layer above it when opened.
 	_style_options()
+	# Wrap all of the above into a sliding pager so we can slide/​swipe to the Army screen.
+	_setup_pager()
 
 func _on_start() -> void:
 	# Don't switch straight to the battle scene — its first-ever load decodes a pile
@@ -226,14 +251,124 @@ func _build_loading_overlay() -> void:
 	create_tween().tween_property(_loading_overlay, "modulate:a", 1.0, 0.2)
 
 func _on_army() -> void:
-	# Full-screen loadout overlay built in code; it frees itself on Back. Pause the
-	# menu theme while it's up (the loadout plays its own calm track) and resume when
-	# it closes, so the two never overlap.
+	# Slide the pager over to the Army page (creating it the first time).
+	_ensure_army()
+	_slide_to_army()
+
+
+# --- Sliding pager --------------------------------------------------------
+# Reparent every menu Control into _menu_page inside a _pager we can slide. Audio
+# players stay on the root (their position is irrelevant). The Army page is created
+# lazily to the right; sliding/​swiping moves the whole pager.
+func _setup_pager() -> void:
+	_page_w = get_viewport_rect().size.x
+	_pager = Control.new()
+	_pager.name = "Pager"
+	_pager.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_pager.position = Vector2.ZERO
+	_pager.size = get_viewport_rect().size
+	_menu_page = Control.new()
+	_menu_page.name = "MenuPage"
+	_menu_page.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_menu_page.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# Snapshot the current visual children, then move them under the menu page.
+	var to_move: Array = []
+	for c in get_children():
+		if c is Control:
+			to_move.append(c)
+	add_child(_pager)
+	_pager.add_child(_menu_page)
+	for c in to_move:
+		remove_child(c)
+		_menu_page.add_child(c)
+
+func _ensure_army() -> void:
+	if _army_page != null or _pager == null:
+		return
+	_army_page = Control.new()
+	_army_page.name = "ArmyPage"
+	_army_page.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_army_page.position = Vector2(_page_w, 0)
+	_army_page.size = get_viewport_rect().size
+	_pager.add_child(_army_page)
+	_army = LOADOUT.new()
+	_army.on_back = Callable(self, "_slide_to_menu")   # Back / swipe-right returns to menu
+	_army.tree_exited.connect(_resume_theme)
+	_army_page.add_child(_army)
 	if _theme != null:
-		_theme.stream_paused = true
-	var screen = LOADOUT.new()
-	screen.tree_exited.connect(_resume_theme)
-	add_child(screen)
+		_theme.stream_paused = true   # army page plays its own calm theme
+
+func _destroy_army() -> void:
+	if _army_page != null:
+		_army_page.queue_free()   # frees the loadout -> tree_exited -> _resume_theme
+		_army_page = null
+		_army = null
+
+func _slide_to_army() -> void:
+	_ensure_army()
+	_animate_pager_to(-_page_w)
+
+func _slide_to_menu() -> void:
+	_animate_pager_to(0.0)
+
+func _animate_pager_to(target_x: float) -> void:
+	if _pager == null:
+		return
+	_sliding = true
+	var t := create_tween()
+	t.tween_property(_pager, "position:x", target_x, 0.26).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	t.tween_callback(func() -> void:
+		_sliding = false
+		if is_equal_approx(target_x, 0.0):
+			_destroy_army()   # back at the menu: tear the army page down
+			# Re-read gold: an unlock bought on the army screen spends coins, so the
+			# menu badge must resync or it'd show a stale value until the next chest.
+			if _coin_label != null and is_instance_valid(_coin_label):
+				_coin_label.text = str(PROFILE.get_coins()))
+
+# Horizontal swipe drives the pager directly; on release it snaps to the nearer page.
+# Uses _input (not _unhandled_input) so it works even over Labels/buttons, which block
+# mouse input by default. We never accept_event(), so taps/clicks still work normally.
+func _input(event: InputEvent) -> void:
+	if _pager == null or _sliding or _loading or _chest_popup != null:
+		return
+	if get_viewport().gui_is_dragging():
+		return   # don't fight a card drag-and-drop on the army screen
+	if (event is InputEventScreenTouch and event.pressed) \
+			or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
+		_swipe_accum = 0.0   # fresh gesture
+	elif event is InputEventScreenDrag:
+		_swipe_drag(event.relative.x)
+	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+		_swipe_drag(event.relative.x)
+	elif (event is InputEventScreenTouch and not event.pressed) \
+			or (event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
+		if _swiping:
+			_swipe_release()
+		else:
+			_swipe_accum = 0.0
+
+func _swipe_drag(dx: float) -> void:
+	if not _swiping:
+		# Wait for a deliberate horizontal drag before hijacking the gesture as a swipe.
+		_swipe_accum += dx
+		if absf(_swipe_accum) < SWIPE_DEADZONE:
+			return
+		if _army_page == null and _swipe_accum >= 0.0:
+			_swipe_accum = 0.0   # at the menu, dragging right goes nowhere
+			return
+		_swiping = true
+		if _army_page == null:
+			_ensure_army()
+	_pager.position.x = clampf(_pager.position.x + dx, -_page_w, 0.0)
+
+func _swipe_release() -> void:
+	_swiping = false
+	_swipe_accum = 0.0
+	var target := 0.0
+	if _pager.position.x < -_page_w * 0.35:   # dragged past ~35% -> commit to the army page
+		target = -_page_w
+	_animate_pager_to(target)
 
 func _resume_theme() -> void:
 	if is_instance_valid(_theme):
@@ -255,6 +390,22 @@ func _on_options() -> void:
 func _on_back() -> void:
 	options_panel.visible = false
 	_backdrop.visible = false
+
+# Demo helper: relock all units so the unlock flow can be shown again. The Army page
+# is rebuilt fresh each visit, so it'll show them locked next time it's opened; if it
+# happens to be built right now, refresh it live too.
+func _on_relock() -> void:
+	CARD_CATALOG.relock_all()
+	if _army != null and is_instance_valid(_army) and _army.has_method("_refresh_after_unlock"):
+		_army._refresh_after_unlock()
+	var btn = options_panel.get_node_or_null("RelockButton")
+	if btn is Button:
+		btn.text = "Relocked!"
+		var t := create_tween()
+		t.tween_interval(1.0)
+		t.tween_callback(func() -> void:
+			if is_instance_valid(btn):
+				btn.text = "Relock Units")
 
 func _apply_bus(bus_name: String, linear: float) -> void:
 	var idx := AudioServer.get_bus_index(bus_name)
@@ -432,6 +583,73 @@ func _add_coin_badge() -> void:
 	lbl.position = Vector2(64, 10)
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(lbl)
+	_coin_label = lbl   # kept so the chest reward can refresh it
+
+# Chest button just below the coin badge: opens the free-gold chest popup.
+func _add_chest_button() -> void:
+	var wood_dark := Color(0.28, 0.16, 0.07)
+	var gold := Color(0.92, 0.72, 0.30)
+	# A proper square wooden button.
+	var btn := Button.new()
+	btn.name = "ChestButton"
+	btn.add_theme_stylebox_override("normal", _chest_btn_style(Color(0.42, 0.27, 0.13), gold))
+	btn.add_theme_stylebox_override("hover", _chest_btn_style(Color(0.48, 0.31, 0.15), gold))
+	btn.add_theme_stylebox_override("pressed", _chest_btn_style(Color(0.33, 0.21, 0.10), wood_dark))
+	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	btn.anchor_left = 1.0; btn.anchor_right = 1.0
+	btn.anchor_top = 0.0; btn.anchor_bottom = 0.0
+	btn.offset_left = -182; btn.offset_right = -62
+	btn.offset_top = 158; btn.offset_bottom = 278
+	btn.pressed.connect(_open_chest)
+	add_child(btn)
+
+	# Chest icon sitting on top of the button face (white-keyed, slight inset).
+	var icon := TextureRect.new()
+	icon.texture = _load_tex("res://assets/ui/chest_closed.png")
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var shader = load("res://shaders/white_key.gdshader")
+	if shader is Shader:
+		var mat := ShaderMaterial.new()
+		mat.shader = shader
+		mat.set_shader_parameter("white_cut", 0.86)
+		mat.set_shader_parameter("sat_max", 0.12)
+		mat.set_shader_parameter("softness", 0.05)
+		icon.material = mat
+	icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	icon.offset_left = 8; icon.offset_top = 8; icon.offset_right = -8; icon.offset_bottom = -8
+	btn.add_child(icon)
+	_wire_feel(btn)
+
+func _chest_btn_style(bg: Color, border: Color) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = bg
+	s.border_color = border
+	s.set_border_width_all(5)
+	s.set_corner_radius_all(18)
+	s.shadow_color = Color(0, 0, 0, 0.3)
+	s.shadow_size = 6
+	s.shadow_offset = Vector2(0, 4)
+	return s
+
+func _open_chest() -> void:
+	if _chest_popup != null:
+		return
+	var popup = CHEST_POPUP.new()
+	popup.on_gold_changed = Callable(self, "_refresh_coin_badge")
+	add_child(popup)   # top-level overlay, above the sliding pager
+	_chest_popup = popup
+	popup.tree_exited.connect(func() -> void: _chest_popup = null)
+
+func _refresh_coin_badge() -> void:
+	if _coin_label == null or not is_instance_valid(_coin_label):
+		return
+	_coin_label.text = str(PROFILE.get_coins())
+	_coin_label.pivot_offset = _coin_label.size * 0.5
+	var t := create_tween()
+	t.tween_property(_coin_label, "scale", Vector2(1.3, 1.3), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(_coin_label, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 # Load a texture, falling back to a raw image read so it works before Godot has
 # imported the PNG (the logo was written straight to disk).
@@ -526,6 +744,34 @@ func _style_options() -> void:
 		sl.add_theme_icon_override("grabber", knob)
 		sl.add_theme_icon_override("grabber_highlight", knob_hi)
 		sl.add_theme_icon_override("grabber_disabled", knob)
+
+	# "Relock Units" — demo helper: re-locks builder/bomber so the unlock flow can be
+	# shown off again. Sits between the SFX row and the Back button.
+	var relock := Button.new()
+	relock.name = "RelockButton"
+	relock.text = "Relock Units"
+	relock.anchor_left = 0.5; relock.anchor_right = 0.5
+	relock.anchor_top = 0.5; relock.anchor_bottom = 0.5
+	relock.offset_left = -170.0; relock.offset_right = 170.0
+	relock.offset_top = 42.0; relock.offset_bottom = 86.0
+	relock.add_theme_font_size_override("font_size", 26)
+	relock.add_theme_color_override("font_color", parch)
+	for st in ["normal", "hover", "pressed"]:
+		var sb := StyleBoxFlat.new()
+		var shade := 0.34
+		if st == "hover":
+			shade = 0.40
+		elif st == "pressed":
+			shade = 0.26
+		sb.bg_color = Color(shade, shade * 0.6, shade * 0.3)
+		sb.border_color = gold
+		sb.set_border_width_all(3)
+		sb.set_corner_radius_all(12)
+		sb.set_content_margin_all(6)
+		relock.add_theme_stylebox_override(st, sb)
+	relock.pressed.connect(_on_relock)
+	options_panel.add_child(relock)
+	_wire_feel(relock)
 
 # A round knob texture: a filled disc with a darker rim, anti-aliased at the edge.
 func _make_knob(d: int, fill: Color, rim: Color) -> ImageTexture:

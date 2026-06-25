@@ -55,6 +55,35 @@ func _ready() -> void:
 		_on_elixir_changed(_elixir.current, _elixir.max_elixir)
 
 
+# Sudden death: elixir is regenerating at double rate — show a simple purple "x2"
+# above the meter so the player sees why it's filling so fast. Idempotent.
+func show_double() -> void:
+	if _root == null or _root.has_node("DoubleLabel"):
+		return
+	var lbl := Label.new()
+	lbl.name = "DoubleLabel"
+	lbl.text = "x2"
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 44)
+	lbl.add_theme_color_override("font_color", COL_BRIGHT)   # elixir purple
+	lbl.add_theme_color_override("font_outline_color", Color(0.05, 0.0, 0.12))
+	lbl.add_theme_constant_override("outline_size", 6)
+	# Centred over the tube, sitting just above the elixir drop (bottom-left anchored).
+	lbl.anchor_left = 0.0
+	lbl.anchor_right = 0.0
+	lbl.anchor_top = 1.0
+	lbl.anchor_bottom = 1.0
+	var cx := MARGIN + TUBE_W * 0.5
+	lbl.offset_left = cx - 50.0
+	lbl.offset_right = cx + 50.0
+	var drop_top := -(MARGIN + TUBE_H) - DROP_SIZE * 0.55
+	lbl.offset_top = drop_top - 56.0
+	lbl.offset_bottom = drop_top - 4.0
+	_root.add_child(lbl)
+
+
 func _on_elixir_changed(current_amount: float, maximum: float) -> void:
 	# Tube fill ratio.
 	var ratio: float = 0.0

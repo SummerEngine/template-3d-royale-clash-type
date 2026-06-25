@@ -14,12 +14,21 @@ var _fill_mesh: QuadMesh
 var _fill_mat: StandardMaterial3D
 var _target
 var _last_frac: float = -1.0
-var _flash_tw: Tween = null   # white damage-flash, fades back to the health color
+var _flash_tw: Tween = null   # white damage-flash, fades back to the team color
+var _team_col: Color = Color(0.25, 0.85, 0.25)   # green=friendly, red=enemy; set once from team
 
 func _ready() -> void:
 	_target = get_parent()
 	position.y = height_above
+	_team_col = _team_color()
 	_build()
+
+# Friendly (team 0) reads green, enemy reads red — fixed by team, not by hp.
+func _team_color() -> Color:
+	var t := 0
+	if _target != null and "team" in _target:
+		t = int(_target.team)
+	return Color(0.25, 0.85, 0.25) if t == 0 else Color(0.90, 0.20, 0.20)
 
 func _build() -> void:
 	# Just the colored fill quad — no background. We left-anchor by shrinking the
@@ -28,7 +37,7 @@ func _build() -> void:
 	_fill = MeshInstance3D.new()
 	_fill_mesh = QuadMesh.new()
 	_fill_mesh.size = Vector2(bar_width, bar_height * 0.74)
-	_fill_mat = _make_mat(Color(0.25, 0.85, 0.25, 1.0), 1)
+	_fill_mat = _make_mat(_team_col, 1)
 	_fill.mesh = _fill_mesh
 	_fill.material_override = _fill_mat
 	add_child(_fill)
@@ -62,9 +71,9 @@ func _process(_delta: float) -> void:
 	# (0,0,0), coincident with the background, so the billboards never separate.
 	_fill_mesh.size = Vector2(bar_width * frac, bar_height * 0.74)
 	_fill_mesh.center_offset = Vector3(-bar_width * 0.5 * (1.0 - frac), 0.0, 0.0)
-	# Green when healthy, red when low.
-	var health_col := Color(0.85, 0.2, 0.2).lerp(Color(0.25, 0.85, 0.25), frac)
-	# Took damage -> punch the bar white, then fade back to the health color.
+	# Color is fixed by team (green=friendly, red=enemy), independent of hp.
+	var health_col := _team_col
+	# Took damage -> punch the bar white, then fade back to the team color.
 	if prev >= 0.0 and frac < prev:
 		if _flash_tw != null and _flash_tw.is_valid():
 			_flash_tw.kill()

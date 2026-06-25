@@ -184,13 +184,16 @@ func _build_xp_panel(root: Control) -> void:
 	root.add_child(box)
 	_xp_box = box
 
-	# "LEVEL UP!" banner — hidden until the bar actually crosses a level mid-fill.
+	# "LEVEL UP!" banner. Kept ALWAYS laid out (visible=true) but fully transparent, so
+	# it permanently reserves its slot in the VBox — the labels below never shift whether
+	# or not a level is crossed. It reads as empty until _play_levelup fades it in (and
+	# then it stays up for good).
 	_xp_levelup_label = Label.new()
 	_xp_levelup_label.text = "LEVEL UP!"
 	_xp_levelup_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_xp_levelup_label.add_theme_color_override("font_color", gold)
 	_xp_levelup_label.add_theme_font_size_override("font_size", 44)
-	_xp_levelup_label.visible = false
+	_xp_levelup_label.modulate = Color(1, 1, 1, 0)   # invisible but still occupies its line
 	box.add_child(_xp_levelup_label)
 
 	var gained := Label.new()
@@ -280,10 +283,8 @@ func _play_levelup(_new_level: int) -> void:
 	if not is_instance_valid(_xp_box) or not is_instance_valid(_xp_levelup_label):
 		return
 	var gold := Color(0.95, 0.78, 0.32)
-	_xp_levelup_label.visible = true
-	await get_tree().process_frame   # let the container lay the label out (valid size)
-	if not is_instance_valid(_xp_levelup_label):
-		return
+	# The label already occupies its slot (built transparent), so its size is valid now
+	# and revealing it shifts nothing.
 	_xp_levelup_label.modulate = Color(1, 1, 1, 0)
 	_xp_levelup_label.pivot_offset = _xp_levelup_label.size * 0.5
 	_xp_levelup_label.scale = Vector2(0.4, 0.4)
@@ -302,13 +303,9 @@ func _play_levelup(_new_level: int) -> void:
 	t.tween_property(_xp_box, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await t.finished
 
+	# Stays revealed for good — once you've leveled up, "LEVEL UP!" remains on screen.
+	# A short hold here just paces the bar before it rolls into the next level (if any).
 	await get_tree().create_timer(0.45).timeout
-	if is_instance_valid(_xp_levelup_label):
-		var ft := create_tween()
-		ft.tween_property(_xp_levelup_label, "modulate:a", 0.0, 0.2)
-		await ft.finished
-		if is_instance_valid(_xp_levelup_label):
-			_xp_levelup_label.visible = false
 
 func _on_continue() -> void:
 	get_tree().paused = false   # un-freeze before leaving, so the menu runs normally

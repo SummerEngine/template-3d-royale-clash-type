@@ -28,6 +28,10 @@ const DEPLOY_CONTROLLER := preload("res://scripts/deploy_controller.gd")
 const WIN_SCREEN := preload("res://scripts/win_screen.gd")
 const CARD_CATALOG := preload("res://scripts/card_catalog.gd")
 const PAUSE_MENU := preload("res://scripts/pause_menu.gd")
+const MATCH_TIMER := preload("res://scripts/match_timer.gd")
+const DEPLOY_HINT := preload("res://scripts/deploy_hint.gd")
+const ARROWS_SPELL := preload("res://scripts/arrows_spell.gd")
+const SKY_BOMB := preload("res://scripts/sky_bomb.gd")
 
 @export var player_base_path: NodePath
 @export var enemy_base_path: NodePath
@@ -43,7 +47,7 @@ const PAUSE_MENU := preload("res://scripts/pause_menu.gd")
 @export var bridge_capture: float = 0.5      # only a small jostle just past a bridge edge is pulled back onto the lane; walk into the water any further and you're blocked + ejected straight back to your own bank (no long sideways teleport)
 @export var bridge_arc_peak: float = 1.3     # visual height units rise to at a bridge's centre (tune to the deck)
 @export var bridge_arc_span: float = 2.75    # perpendicular half-span where the deck meets the banks (height 0)
-@export var enemy_start_elixir: float = 0.0      # enemy begins with this much (0 = ~9s behind the player's 3)
+@export var enemy_start_elixir: float = 1.0      # enemy begins with this much (1 = ~6s behind the player's 3)
 @export var enemy_brain_interval: float = 0.6    # how often the enemy AI considers a purchase (sec)
 @export var enemy_barb_chance: float = 0.4       # P(barbarian) when the enemy buys at 3 elixir
 @export var enemy_wizard_chance: float = 0.3     # P(wizard); builder gets the remainder (~0.3)
@@ -56,6 +60,12 @@ const PAUSE_MENU := preload("res://scripts/pause_menu.gd")
 @export var bomber_spawn_cost: float = 1.0       # elixir cost per bomber (cheap, fragile suicide unit)
 @export var enemy_bomber_chance: float = 0.12    # P(bomber) on an enemy purchase roll
 @export var enemy_giant_chance: float = 0.08     # P(giant) on an enemy purchase roll (builder gets the remainder)
+# Sudden death: when the match clock hits 0, bombs rain from the sky and kill EVERYONE.
+@export var sd_bomb_interval: float = 1.6        # seconds between bomb drops (a mirrored pair each) — sparse rain
+@export var sd_bomb_field: float = 17.0          # half-extent of the square drop zone (centred, symmetric)
+@export var sd_bomb_height: float = 30.0         # spawn height — a bit above the camera
+@export var sd_bomb_radius: float = 4.5          # blast radius (same as the bomber)
+@export var sd_bomb_damage: float = 50.0         # blast damage to EVERYONE (same as the bomber)
 
 const SPAWN_CARD_GAP := 48.0   # px gap between spawn cards (clears both glow halos)
 
@@ -70,6 +80,7 @@ var _enemy_towers: Array = []  # [{node, pos}] the team-1 princess towers; a fal
 var _player_base   # HouseBase — untyped for cross-script duck typing
 var _enemy_base    # HouseBase — untyped for cross-script duck typing
 var _winner_shown: bool = false
+var _sudden_death: bool = false   # true once the clock ran out and bombs started falling
 var _elixir = null   # player elixir resource model (res://scripts/elixir.gd); untyped for duck typing
 var _elixir_ui = null   # elixir HUD (res://scripts/elixir_ui.gd); untyped for duck typing
 var _enemy_elixir = null   # enemy's HIDDEN elixir economy — same model, no HUD; fed by enemy pumps
@@ -117,6 +128,11 @@ func _ready() -> void:
 	# House health readouts: a floating bar over each house plus the fixed HUD.
 	_setup_house_ui()
 
+	# Battle countdown clock, top-center (2:00 -> 0:00). At zero it triggers sudden death.
+	var mt = MATCH_TIMER.new()
+	mt.finished.connect(_begin_sudden_death)
+	add_child(mt)
+
 	# Subtle swipe-to-pan camera (drags a little, stays where you leave it).
 	_setup_camera_pan()
 
@@ -136,6 +152,8 @@ func _ready() -> void:
 	_start_enemy_spawner()
 	# In-match pause button (corner) + "PAUSED" overlay (Continue / Menu).
 	add_child(PAUSE_MENU.new())
+	# Opening nudge: "Drag units to the battlefield!" if the player stalls at the start.
+	add_child(DEPLOY_HINT.new())
 	SFX.play(self, "res://audio/gong", -2.0, 0.0)   # ceremonial gong to kick off the match
 	# Announcer "FIGHT!" a beat after the gong (non-blocking, so _ready continues).
 	get_tree().create_timer(0.4).timeout.connect(func() -> void:
@@ -672,14 +690,22 @@ func _build_spawn_cards() -> void:
 		if def.is_empty():
 			continue
 		var tex := CARD_CATALOG.load_texture(def["texture"])
-		var glb = load(def["glb"])
-		var unit_script = load(def["script"])
 		var cost: float = def["cost"]
 		var card := SPAWN_CARD.new()
 		layer.add_child(card)
 		_place_card(card, slot, count, card_w)   # slot 0 = leftmost; row spans the width
-		card.setup(card_w, tex, cost, int(cost), drop_tex, _elixir, deploy,
-			{ "glb": glb, "scale": def["scale"], "spawn_fn": spawn_one_typed_at.bind(glb, unit_script) })
+		var udef: Dictionary
+		if str(def.get("kind", "")) == "spell":
+			# Spell card: no unit ghost. The deploy controller aims a target reticle
+			# anywhere; the spawn fn casts the spell (radius/damage bound in).
+			var sr: float = def.get("radius", 4.0)
+			var sd: float = def.get("damage", 30.0)
+			udef = { "spell": true, "radius": sr, "spawn_fn": cast_arrows.bind(sr, sd) }
+		else:
+			var glb = load(def["glb"])
+			var unit_script = load(def["script"])
+			udef = { "glb": glb, "scale": def["scale"], "spawn_fn": spawn_one_typed_at.bind(glb, unit_script) }
+		card.setup(card_w, tex, cost, int(cost), drop_tex, _elixir, deploy, udef)
 
 # Center the row of `count` cards (each `card_w` wide) along the bottom edge.
 # Anchored to the screen's bottom-center; total row width = viewport - 2*margin,
@@ -691,8 +717,9 @@ func _place_card(card: Control, slot: int, count: int, card_w: float) -> void:
 	var left := -total_w * 0.5 + float(slot) * (card_w + SPAWN_CARD_GAP)
 	card.offset_left = left
 	card.offset_right = left + card_w
-	card.offset_bottom = -spawn_button_margin
-	card.offset_top = -spawn_button_margin - card_w
+	var lift := 36.0   # nudge the row up a touch off the very bottom edge
+	card.offset_bottom = -spawn_button_margin - lift
+	card.offset_top = -spawn_button_margin - lift - card_w
 
 # Capture the two enemy (team-1) princess towers once, storing their world position
 # so a fallen tower's lane is still locatable after the node frees itself.
@@ -739,7 +766,20 @@ func try_deploy(cost: float, spawn_fn: Callable, pos: Vector3) -> int:
 		_elixir.spend(cost)
 	spawn_fn.call(0, pos)
 	_play(_sfx_spawn)
+	get_tree().call_group("deploy_hint", "dismiss")   # first player deploy — drop the opening nudge
 	return _RESULT_SPAWNED
+
+# Cast the Arrows spell at `pos`: spawn the volley FX, which deals one AoE burst a
+# beat later. Used as a positional spawn_fn via try_deploy (elixir already spent);
+# radius/damage are bound by the spell card. team = caster (0 = player).
+func cast_arrows(team: int, pos: Vector3, radius: float, damage: float) -> void:
+	var fx = ARROWS_SPELL.new()
+	fx.setup(self, team, radius, damage)
+	fx.position = Vector3(pos.x, 0.0, pos.z)
+	var host := get_parent()
+	if host == null:
+		host = self
+	host.add_child(fx)
 
 # Positional spawns used by drag-to-deploy (team picks the matching enemy base).
 func _enemy_base_for(team: int) -> Node3D:
@@ -939,7 +979,21 @@ func _on_base_destroyed(team: int) -> void:
 	_play_end_music(winner == 0)
 	# Announcer calls the result: "Victory!" for the player, "Defeat." otherwise.
 	SFX.play(self, "res://audio/announcer_victory" if winner == 0 else "res://audio/announcer_defeat", 2.0, 0.0, 0.64)
+	# Gentle zoom-out to take in the whole board, THEN raise the win screen a beat
+	# later (~0.5s) so the camera has settled before the overlay drops in.
+	_end_game_zoom_out()
+	await get_tree().create_timer(0.5).timeout
 	_show_win_banner(winner)
+
+# A soft widen of the view when the match ends: ease the camera fov out a few
+# degrees over ~half a second. Tweening fov (not position) keeps it clear of the
+# camera-pan node, which only drives global_position during shake.
+func _end_game_zoom_out() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var tw := cam.create_tween()
+	tw.tween_property(cam, "fov", cam.fov + 7.0, 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 # Play a short victory/defeat track on the Music bus (slider-controlled). Prefers a
 # dedicated *_music file; falls back to the existing victory/defeat stinger until
@@ -975,3 +1029,110 @@ func _show_win_banner(winner: int) -> void:
 	var ws = WIN_SCREEN.new()
 	ws.show_result(winner == 0)   # "YOU WIN" + hero, or a "DEFEAT" title
 	add_child(ws)
+
+# ===========================================================================
+# Sudden death — the clock ran out. Rain bombs that kill EVERYONE until a King
+# falls, which ends the match through the normal destroyed -> win flow.
+# ===========================================================================
+func _begin_sudden_death() -> void:
+	if _sudden_death or _winner_shown:
+		return
+	_sudden_death = true
+	# Double the elixir rate for both economies, and flag x2 on the player's meter.
+	if _elixir != null:
+		_elixir.regen_per_sec *= 2.0
+	if _enemy_elixir != null:
+		_enemy_elixir.regen_per_sec *= 2.0
+	if _elixir_ui != null and _elixir_ui.has_method("show_double"):
+		_elixir_ui.show_double()
+	SFX.play(self, "res://audio/gong", 0.0, 0.0)   # ominous toll
+	_show_sudden_death_banner()
+	var t := Timer.new()
+	t.name = "BombRain"
+	t.wait_time = sd_bomb_interval
+	t.autostart = true
+	t.timeout.connect(_rain_bombs)
+	add_child(t)
+
+# One MIRRORED PAIR per tick (a random spot + its reflection through centre), so the
+# barrage is symmetric for both sides. Each bomb spawns high above and falls.
+func _rain_bombs() -> void:
+	if _winner_shown:
+		return
+	var x := randf_range(-sd_bomb_field, sd_bomb_field)
+	var z := randf_range(-sd_bomb_field, sd_bomb_field)
+	_drop_bomb(Vector3(x, sd_bomb_height, z))
+	_drop_bomb(Vector3(-x, sd_bomb_height, -z))
+
+func _drop_bomb(pos: Vector3) -> void:
+	var b = SKY_BOMB.new()
+	add_child(b)
+	b.global_position = pos
+	b.setup(self)
+
+# A sky bomb hit the ground: AoE that hurts EVERYONE (run the damage pass for both
+# teams — each pass hits the other side's units, structures, and King) + blast FX.
+func bomb_detonate(center: Vector3) -> void:
+	explode_damage(center, sd_bomb_radius, sd_bomb_damage, 0)
+	explode_damage(center, sd_bomb_radius, sd_bomb_damage, 1)
+	_bomb_fx(center)
+
+func _bomb_fx(center: Vector3) -> void:
+	SFX.play(self, "res://audio/big_explosion", 3.0)
+	if _cam_pan != null and _cam_pan.has_method("add_trauma"):
+		_cam_pan.add_trauma(0.3)   # shake only — NO slow-mo (a constant rain would never end)
+	var ball := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 1.0
+	sm.height = 2.0
+	ball.mesh = sm
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.albedo_color = Color(1.0, 0.6, 0.2, 0.9)
+	ball.material_override = mat
+	add_child(ball)
+	ball.global_position = center + Vector3(0.0, 0.6, 0.0)
+	ball.scale = Vector3.ONE * 0.4
+	var bt := ball.create_tween()
+	bt.set_parallel(true)
+	bt.tween_property(ball, "scale", Vector3.ONE * sd_bomb_radius, 0.3).set_ease(Tween.EASE_OUT)
+	bt.tween_property(mat, "albedo_color:a", 0.0, 0.3)
+	bt.set_parallel(false)
+	bt.tween_callback(ball.queue_free)
+
+# Big red pulsing "SUDDEN DEATH!!!!" across the screen.
+func _show_sudden_death_banner() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 50
+	add_child(layer)
+	var lbl := Label.new()
+	lbl.text = "SUDDEN DEATH!!!!"
+	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.add_theme_font_size_override("font_size", 96)
+	lbl.add_theme_color_override("font_color", Color(1.0, 0.22, 0.16))
+	lbl.add_theme_color_override("font_outline_color", Color(0.12, 0.0, 0.0))
+	lbl.add_theme_constant_override("outline_size", 12)
+	layer.add_child(lbl)
+	lbl.pivot_offset = get_viewport().get_visible_rect().size * 0.5
+	# Pop in, then grow/shrink a few times, then fade + blow up off screen (~3s total).
+	lbl.scale = Vector2(1.5, 1.5)
+	var tw := lbl.create_tween()
+	tw.tween_property(lbl, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	for i in 3:
+		tw.tween_property(lbl, "scale", Vector2(1.18, 1.18), 0.35).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(lbl, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_SINE)
+	await get_tree().create_timer(3.0).timeout
+	if not is_instance_valid(lbl):
+		return
+	var out := lbl.create_tween()
+	out.set_parallel(true)
+	out.tween_property(lbl, "modulate:a", 0.0, 0.4)
+	out.tween_property(lbl, "scale", Vector2(1.7, 1.7), 0.4).set_ease(Tween.EASE_IN)
+	await out.finished
+	if is_instance_valid(layer):
+		layer.queue_free()

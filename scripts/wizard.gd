@@ -20,7 +20,7 @@ extends Node3D
 @export var attack_cooldown: float = 1.8
 @export var aggro_radius: float = 11.0
 @export var radius: float = 0.91          # soft-collision radius; read by manager
-@export var visual_scale: float = 1.3     # uniform model scale (+30%)
+@export var visual_scale: float = 1.43    # uniform model scale (+43%)
 @export var fade_time: float = 0.8        # seconds to fade the corpse out after the death clip
 @export var attack_anim_speed: float = 2.0   # play the cast clip this much faster
 @export var attack_hit_delay: float = 0.5    # seconds into the cast before the fireball launches

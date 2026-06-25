@@ -23,10 +23,11 @@ extends Node3D
 @export var attack_range: float = 1.8     # must exceed structure push-out so the swing connects
 @export var attack_cooldown: float = 1.6
 @export var radius: float = 1.5           # soft-collision radius; read by manager (big footprint)
-@export var visual_scale: float = 2.4     # uniform model scale — towers over the rank-and-file
+@export var visual_scale: float = 2.64    # uniform model scale — towers over the rank-and-file
 @export var swing_time: float = 0.4       # fallback procedural chop duration (if no clip)
 @export var swing_angle: float = 0.6      # peak forward pitch of the fallback chop (radians)
 @export var attack_anim_speed: float = 1.4   # play the hammer clip this much faster
+@export var walk_anim_speed: float = 0.8     # play the walk clip slower — a heavy, lumbering gait
 @export var attack_hit_delay: float = 0.95   # seconds into the swing before damage lands
 @export var fade_time: float = 1.0        # seconds to fade the corpse out after the death clip
 
@@ -189,8 +190,8 @@ func _match_clip(keys: Array) -> String:
 func _play(clip: String, loop_it: bool, speed: float = 1.0) -> void:
 	if _anim == null or clip == "":
 		return
-	if speed == 1.0 and _anim.current_animation == clip:
-		return
+	if _anim.current_animation == clip:
+		return   # already playing this clip (at its set speed); don't restart it
 	_anim.play(clip, -1, speed)
 	var anim := _anim.get_animation(clip)
 	if anim:
@@ -265,7 +266,7 @@ func _process(delta: float) -> void:
 
 	if dist <= range_pad:
 		_face(target.global_position, delta)
-		_play(_walk_clip, true)   # keep limbs alive between swings (no dedicated idle hold)
+		_play(_walk_clip, true, walk_anim_speed)   # keep limbs alive between swings (no dedicated idle hold)
 		if _attack_timer <= 0.0:
 			_attack_timer = attack_cooldown
 			SFX.play(self, "res://audio/giant_attack", -2.0)
@@ -290,7 +291,7 @@ func _process(delta: float) -> void:
 		_face(dest, delta)
 		position += dir * move_speed * delta
 	position.y = _bridge_y()
-	_play(_walk_clip, true)
+	_play(_walk_clip, true, walk_anim_speed)
 
 func _update_swing(delta: float) -> void:
 	if _swing_t < 0.0:

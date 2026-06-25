@@ -34,7 +34,7 @@ func _build_pause_button() -> void:
 	btn.anchor_left = 0.0; btn.anchor_right = 0.0
 	btn.anchor_top = 0.0; btn.anchor_bottom = 0.0
 	btn.offset_left = 22.0; btn.offset_right = 22.0 + 96.0
-	btn.offset_top = 22.0; btn.offset_bottom = 22.0 + 96.0
+	btn.offset_top = 52.0; btn.offset_bottom = 52.0 + 96.0
 	btn.pressed.connect(_open)
 	add_child(btn)
 	# Pause glyph (two brown bars) centered on the wooden button.

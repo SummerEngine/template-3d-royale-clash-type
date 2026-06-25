@@ -20,7 +20,7 @@ extends Node3D
 @export var move_speed: float = 2.7        # fast — it wants to reach the line and blow up
 @export var turn_speed: float = 7.0        # yaw lerp factor
 @export var radius: float = 0.91           # soft-collision radius; read by manager
-@export var visual_scale: float = 1.3      # uniform model scale (matches the rank-and-file)
+@export var visual_scale: float = 1.43     # uniform model scale (matches the rank-and-file)
 @export var trigger_range: float = 1.4     # gap to the target (plus its radius) at which it commits to the jump
 @export var explosion_radius: float = 6.75  # AoE radius of the blast (horizontal) — wide, catches whole clumps
 @export var explosion_damage: float = 50.0   # AoE hit
@@ -207,7 +207,7 @@ func _explode() -> void:
 # outlive us when we free.
 func _explosion_fx() -> void:
 	Juice.boom(global_position, 1.6)
-	SFX.play(self, "res://audio/bomber_explode", 2.0)
+	SFX.play(self, "res://audio/big_explosion", 5.0)
 	var host := get_parent()
 	if host == null:
 		return
