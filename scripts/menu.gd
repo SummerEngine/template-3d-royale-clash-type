@@ -34,6 +34,7 @@ var _theme: AudioStreamPlayer   # looping main-menu theme on the Music bus
 var _feel_tweens := {}   # button -> active Tween, so a new state cancels the old
 var _backdrop: ColorRect   # dim layer behind the options panel (built in _style_options)
 var _coin_label: Label = null   # the coin-counter text, refreshed after a chest reward
+var _coin_badge: Control = null # the coin badge panel; kept OUTSIDE the pager so it's fixed across both pages
 var _chest_popup = null         # active free-gold chest popup (blocks swiping while up)
 
 # Loading overlay (raised by Start while the battle scene finishes loading).
@@ -274,13 +275,16 @@ func _setup_pager() -> void:
 	# Snapshot the current visual children, then move them under the menu page.
 	var to_move: Array = []
 	for c in get_children():
-		if c is Control:
+		if c is Control and c != _coin_badge:   # leave the coin badge out of the pager
 			to_move.append(c)
 	add_child(_pager)
 	_pager.add_child(_menu_page)
 	for c in to_move:
 		remove_child(c)
 		_menu_page.add_child(c)
+	# Keep the coin badge fixed and on top of the pager, so it serves both pages.
+	if _coin_badge != null:
+		move_child(_coin_badge, get_child_count() - 1)
 
 func _ensure_army() -> void:
 	if _army_page != null or _pager == null:
@@ -293,6 +297,7 @@ func _ensure_army() -> void:
 	_pager.add_child(_army_page)
 	_army = LOADOUT.new()
 	_army.on_back = Callable(self, "_slide_to_menu")   # Back / swipe-right returns to menu
+	_army.on_gold_changed = Callable(self, "_refresh_coin_badge")   # unlock spend -> refresh shared badge
 	_army.tree_exited.connect(_resume_theme)
 	_army_page.add_child(_army)
 	if _theme != null:
@@ -567,6 +572,7 @@ func _add_coin_badge() -> void:
 	sb.shadow_offset = Vector2(0, 4)
 	panel.add_theme_stylebox_override("panel", sb)
 	add_child(panel)
+	_coin_badge = panel   # kept out of the pager so it stays put across menu + army
 
 	# Reuse the slider-knob disc as a little gold coin icon.
 	var coin := TextureRect.new()

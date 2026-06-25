@@ -1,5 +1,5 @@
 extends CanvasLayer
-## Battle countdown clock, pinned top-center. Counts down from start_seconds
+## Battle countdown clock, pinned top-right (opposite the pause button). Counts down from start_seconds
 ## (2:00) and stops at 0:00. Built entirely in code; the battle manager spawns one.
 ## Pauses with the game automatically (default process_mode follows the SceneTree
 ## pause), so it doesn't tick while the pause menu is up.
@@ -24,15 +24,16 @@ func _ready() -> void:
 func _build() -> void:
 	var panel := Panel.new()
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.anchor_left = 0.5
-	panel.anchor_right = 0.5
+	# Top-right, mirroring the pause button (top-left, margin 22 / top 52).
+	panel.anchor_left = 1.0
+	panel.anchor_right = 1.0
 	panel.anchor_top = 0.0
 	panel.anchor_bottom = 0.0
-	panel.offset_left = -90.0
-	panel.offset_right = 90.0
-	panel.offset_top = 16.0
-	panel.offset_bottom = 84.0
-	panel.pivot_offset = Vector2(90.0, 34.0)   # centre, for the warn pulse
+	panel.offset_left = -202.0
+	panel.offset_right = -22.0
+	panel.offset_top = 55.0
+	panel.offset_bottom = 123.0
+	panel.pivot_offset = Vector2(90.0, 34.0)   # centre (180x68), for the warn pulse
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.08, 0.05, 0.03, 0.62)
 	sb.set_corner_radius_all(16)

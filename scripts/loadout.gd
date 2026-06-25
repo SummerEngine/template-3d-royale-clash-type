@@ -20,6 +20,7 @@ var _wrap: HFlowContainer = null   # the collection container (rebuilt on unlock
 var _gold_label: Label = null      # top-right gold counter
 var _click: AudioStreamPlayer = null
 var on_back: Callable = Callable()   # set by the menu pager; called instead of self-freeing
+var on_gold_changed: Callable = Callable()   # set by the menu; called when an unlock spends gold
 
 
 # --- Drag source: one collection card -------------------------------------
@@ -122,7 +123,8 @@ func _build_ui() -> void:
 
 	_add_label("YOUR ARMY", 44, ACCENT, 120.0, 184.0)
 	_add_label("Drag a card down into your 3 slots", 22, Color(1, 1, 1, 0.7), 188.0, 230.0)
-	_add_gold_badge()
+	# Gold is shown by the menu's persistent coin badge (fixed across both pages); no
+	# separate counter here.
 
 	_build_collection()
 	_add_label("YOUR DECK", 26, ACCENT, 612.0, 656.0)
@@ -372,6 +374,8 @@ func _refresh_after_unlock() -> void:
 	_populate_collection()
 	_refresh()
 	_update_gold()
+	if on_gold_changed.is_valid():
+		on_gold_changed.call()   # refresh the menu's persistent coin badge
 
 
 # Tap on a collection card -> open the inspect popup for that unit.
