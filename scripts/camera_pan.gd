@@ -8,6 +8,8 @@ extends Node
 ## The camera never rotates, so we capture its screen-plane axes once and only
 ## ever slide along them.
 
+const PAN_ENABLED := false   # swipe-to-pan disabled for now — flip to true to restore it
+
 @export var pan_speed: float = 0.012   # world units moved per pixel of drag
 @export var max_pan_x: float = 3.0     # half-width of the allowed rectangle (camera-right axis)
 @export var max_pan_y: float = 2.2     # half-height of the allowed rectangle (camera-up axis)
@@ -52,7 +54,7 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _cam == null or not _enabled:
+	if not PAN_ENABLED or _cam == null or not _enabled:
 		return
 	var rel := Vector2.ZERO
 	if event is InputEventScreenDrag:

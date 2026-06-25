@@ -352,8 +352,8 @@ func _add_level_badge() -> void:
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.anchor_left = 0.0; panel.anchor_right = 0.0
 	panel.anchor_top = 0.0; panel.anchor_bottom = 0.0
-	panel.offset_left = 22; panel.offset_top = 22
-	panel.offset_right = 22 + 236; panel.offset_bottom = 22 + 92
+	panel.offset_left = 22; panel.offset_top = 82
+	panel.offset_right = 22 + 236; panel.offset_bottom = 82 + 92
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.91, 0.82, 0.63, 0.96)
 	sb.border_color = wood_dark
@@ -405,7 +405,7 @@ func _add_coin_badge() -> void:
 	panel.anchor_left = 1.0; panel.anchor_right = 1.0
 	panel.anchor_top = 0.0; panel.anchor_bottom = 0.0
 	panel.offset_right = -22; panel.offset_left = -22 - 200
-	panel.offset_top = 22; panel.offset_bottom = 22 + 64
+	panel.offset_top = 82; panel.offset_bottom = 82 + 64
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.91, 0.82, 0.63, 0.96)
 	sb.border_color = wood_dark

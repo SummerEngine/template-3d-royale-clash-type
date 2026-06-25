@@ -11,6 +11,42 @@ shader_parameter/white_cut = 0.86
 shader_parameter/sat_max = 0.1
 shader_parameter/softness = 0.04
 
+[sub_resource type="StyleBoxFlat" id="BackNormal"]
+bg_color = Color(0.3, 0.174, 0.09, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(1, 0.85, 0.35, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="BackHover"]
+bg_color = Color(0.36, 0.2088, 0.108, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(1, 0.85, 0.35, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="BackPressed"]
+bg_color = Color(0.24, 0.1392, 0.072, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(1, 0.85, 0.35, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
 [node name="Menu" type="Control" unique_id=259429417]
 layout_mode = 3
 anchors_preset = 15
@@ -41,7 +77,7 @@ anchor_bottom = 1.0
 offset_left = -200.0
 offset_top = 0.0
 offset_right = 200.0
-offset_bottom = -48.0
+offset_bottom = -152.0
 grow_horizontal = 2
 grow_vertical = 2
 alignment = 2
@@ -179,8 +215,7 @@ max_value = 1.0
 step = 0.01
 value = 1.0
 
-[node name="BackButton" type="TextureButton" parent="OptionsPanel" unique_id=1960902842]
-material = SubResource("ShaderMaterial_key")
+[node name="BackButton" type="Button" parent="OptionsPanel" unique_id=1960902842]
 custom_minimum_size = Vector2(320, 90)
 layout_mode = 1
 anchors_preset = 7
@@ -194,10 +229,10 @@ offset_right = 160.0
 offset_bottom = -20.0
 grow_horizontal = 2
 grow_vertical = 0
-texture_normal = ExtResource("5_btnw")
-texture_pressed = ExtResource("5_btnw")
-ignore_texture_size = true
-stretch_mode = 0
+theme_override_styles/normal = SubResource("BackNormal")
+theme_override_styles/hover = SubResource("BackHover")
+theme_override_styles/pressed = SubResource("BackPressed")
+theme_override_styles/focus = SubResource("BackNormal")
 
 [node name="Label" type="Label" parent="OptionsPanel/BackButton" unique_id=1075532385]
 layout_mode = 1
@@ -206,7 +241,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_colors/font_color = Color(0.25, 0.13, 0.05, 1)
+theme_override_colors/font_color = Color(1, 0.93, 0.78, 1)
 theme_override_font_sizes/font_size = 30
 text = "Back"
 horizontal_alignment = 1

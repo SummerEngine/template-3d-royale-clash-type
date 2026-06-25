@@ -493,11 +493,13 @@ func add_elixir(team: int, amount: float) -> void:
 		econ.add(amount)
 
 func _physics_process(_delta: float) -> void:
-	# Gather all alive, valid units across both teams.
+	# Gather all alive, valid units across both teams. A bomber mid-jump (_detonating)
+	# is excluded so it phases through the crowd — it neither pushes nor is pushed while
+	# leaping onto its target.
 	var all: Array = []
 	for team_list in units:
 		for u in team_list:
-			if is_instance_valid(u) and u.alive:
+			if is_instance_valid(u) and u.alive and not u.get("_detonating"):
 				all.append(u)
 
 	# Soft collision: for each unique pair, if they overlap horizontally push
@@ -601,6 +603,9 @@ func _process(_delta: float) -> void:
 	# Player reinforcement: Space / Enter also spawns one extra blue unit (dev shortcut).
 	if Input.is_action_just_pressed("ui_accept"):
 		spawn_one(0, _player_base, _enemy_base)
+	# DEBUG: press M for an instant player win (the _winner_shown guard fires it once).
+	if Input.is_key_pressed(KEY_M) and not _winner_shown:
+		_on_base_destroyed(1)   # enemy team "falls" -> player wins, runs the full win flow
 
 # --- TEMPORARY perf probe implementation (remove after profiling) ----------
 # Grab the Ground mesh + its grass material, and build a flat stand-in so we can
