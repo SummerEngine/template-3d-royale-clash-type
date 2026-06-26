@@ -44,6 +44,7 @@ var _loading_bar: ProgressBar
 var _loading_label: Label
 var _load_shown := 0.0   # smoothed bar fill (eases toward the real progress)
 var _load_dots := 0.0    # drives the animated "Loading..." dots
+var _warm_paths: Array = []   # heavy GLB models pre-rendered during the loading screen (see _warm_then_swap)
 
 # --- Sliding pager (Menu <-> Army) ---
 # All menu content is reparented into _menu_page; the Army screen lives in _army_page
@@ -135,7 +136,28 @@ func _begin_loading() -> void:
 	var progress: Array = []
 	if ResourceLoader.load_threaded_get_status(MAIN_SCENE, progress) == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
 		ResourceLoader.load_threaded_request(MAIN_SCENE)
+	# Also background-load the heavy models THIS deck will spawn (units/buildings +
+	# projectiles), so they're in memory by the time the bar fills — then _warm_then_swap
+	# renders them once to compile their GPU pipelines before the scene swap.
+	_warm_paths = _collect_warm_paths()
+	for p in _warm_paths:
+		ResourceLoader.load_threaded_request(p)
 	_build_loading_overlay()
+
+# The heavy models that can appear this match: the 3 deck cards' glbs + the projectiles.
+func _collect_warm_paths() -> Array:
+	var seen := {}
+	var out: Array = []
+	for id in CARD_CATALOG.load_loadout():
+		var g := str(CARD_CATALOG.by_id(str(id)).get("glb", ""))
+		if g != "" and not seen.has(g) and ResourceLoader.exists(g):
+			seen[g] = true
+			out.append(g)
+	for extra in ["res://models/arrow.glb", "res://models/fireball/fireball.glb"]:
+		if not seen.has(extra) and ResourceLoader.exists(extra):
+			seen[extra] = true
+			out.append(extra)
+	return out
 
 func _process(delta: float) -> void:
 	if not _loading:
@@ -162,12 +184,43 @@ func _finish_loading() -> void:
 	_loading_bar.value = 100.0
 	_loading_label.text = "Loading..."
 	var pack: Resource = ResourceLoader.load_threaded_get(MAIN_SCENE)
-	# Defer one frame so this full-bar frame paints, then swap. The (synchronous)
-	# instantiate stall happens with the overlay still covering the screen.
+	# Warm the heavy models (behind the overlay) THEN swap. The (synchronous) instantiate
+	# stall happens with the overlay still covering the screen.
 	if pack is PackedScene:
-		call_deferred("_swap_to", pack)
+		_warm_then_swap(pack)
 	else:
 		call_deferred("_swap_to_file")
+
+# Render one of each heavy match model for a few frames in THIS (root) viewport — the
+# same framebuffer the battle scene will draw into — so the GPU compiles their exact
+# shader pipelines and uploads their textures NOW, hidden behind the opaque loading
+# overlay. The root viewport and its pipeline cache survive change_scene, so placing the
+# first unit in the match no longer hitches. Then swap scenes.
+func _warm_then_swap(pack: PackedScene) -> void:
+	var warm := Node3D.new()
+	warm.name = "ModelWarmup"
+	add_child(warm)
+	var cam := Camera3D.new()
+	cam.position = Vector3(0.0, 1.2, 4.5)
+	cam.current = true
+	warm.add_child(cam)
+	cam.look_at(Vector3(0.0, 1.0, 0.0), Vector3.UP)
+	warm.add_child(DirectionalLight3D.new())
+	for p in _warm_paths:
+		var packed: Resource
+		if ResourceLoader.load_threaded_get_status(p) == ResourceLoader.THREAD_LOAD_LOADED:
+			packed = ResourceLoader.load_threaded_get(p)
+		else:
+			packed = load(p)   # not finished in the background — block briefly, it's tiny
+		if packed is PackedScene:
+			warm.add_child(packed.instantiate())
+	# A few frames so every model actually draws (and its pipeline compiles) at least once.
+	for _i in 6:
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return
+	warm.queue_free()
+	_swap_to(pack)
 
 func _swap_to(pack: PackedScene) -> void:
 	get_tree().change_scene_to_packed(pack)
