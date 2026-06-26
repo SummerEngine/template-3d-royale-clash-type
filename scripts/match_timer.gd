@@ -29,10 +29,10 @@ func _build() -> void:
 	panel.anchor_right = 1.0
 	panel.anchor_top = 0.0
 	panel.anchor_bottom = 0.0
-	panel.offset_left = -202.0
-	panel.offset_right = -22.0
-	panel.offset_top = 55.0
-	panel.offset_bottom = 123.0
+	panel.offset_left = -216.0
+	panel.offset_right = -36.0
+	panel.offset_top = 69.0
+	panel.offset_bottom = 137.0
 	panel.pivot_offset = Vector2(90.0, 34.0)   # centre (180x68), for the warn pulse
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.08, 0.05, 0.03, 0.62)

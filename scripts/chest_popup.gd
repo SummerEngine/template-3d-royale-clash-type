@@ -17,7 +17,7 @@ const GOLD_MIN := 50
 const GOLD_MAX := 300
 
 # How long the over-the-top celebration runs before the chest settles to "tap to close".
-const CELEBRATE_DUR := 3.0
+const CELEBRATE_DUR := 1.5
 
 # Called after gold is awarded so the menu can refresh its coin badge.
 var on_gold_changed: Callable = Callable()
@@ -51,6 +51,12 @@ func _ready() -> void:
 	_backdrop = ColorRect.new()
 	_backdrop.color = Color(0, 0, 0, 0)
 	_backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# Overflow the screen by 60px on every side so the screen-shake (which moves this
+	# whole overlay) can never slide the dark backdrop's edge into view at the corners.
+	_backdrop.offset_left = -60.0
+	_backdrop.offset_top = -60.0
+	_backdrop.offset_right = 60.0
+	_backdrop.offset_bottom = 60.0
 	_backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_backdrop)
 	create_tween().tween_property(_backdrop, "color", Color(0, 0, 0, 0.6), 0.2)
@@ -187,7 +193,8 @@ func _party() -> void:
 		# Coin clinks, rapid and pitch-scattered, for the "cha-ching cascade".
 		if i % 2 == 0:
 			SFX.play(self, "res://audio/elixir_collect", -9.0, 0.0, randf_range(0.85, 1.7))
-		# Every ~0.5s: a ring pulse, a soft flash, a fresh shake kick and a big chime.
+		# 3 impulses across the run (ticks 0/10/20): a ring pulse, a soft flash, a fresh
+		# shake kick and a big chime.
 		if i % 10 == 0:
 			_shockwave()
 			_screen_flash(0.28)
@@ -197,8 +204,8 @@ func _party() -> void:
 		if i % 15 == 7:
 			_light_rays()
 			SFX.play(self, "res://audio/upgrade_powerup", -7.0)
-		# A couple of big punctuating booms across the 3 seconds.
-		if i == 18 or i == 42:
+		# A couple of big punctuating booms across the run.
+		if i == 9 or i == 21:
 			SFX.play(self, "res://audio/gong", -6.0)
 			_kick_shake(0.7)
 	# One last spray as it winds down.

@@ -390,7 +390,7 @@ func _make_ghost(unit_def: Dictionary) -> void:
 	var rm := StandardMaterial3D.new()
 	rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	rm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	var rc: Color = Color(0.95, 0.35, 0.2) if spell else ghost_tint   # red telegraph for spells
+	var rc: Color = ghost_tint   # blue aim ring for everything, matching the unit deploy ghosts
 	rm.albedo_color = Color(rc.r, rc.g, rc.b, 0.75)
 	rm.no_depth_test = true
 	_ring.material_override = rm

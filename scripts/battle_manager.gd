@@ -37,19 +37,20 @@ const FREEZE_SPELL := preload("res://scripts/freeze_spell.gd")
 
 @export var player_base_path: NodePath
 @export var enemy_base_path: NodePath
-@export var squad_size: int = 4    # starting barbarians per team (split 2 left / 2 right)
+@export var player_squad_size: int = 0    # starting barbarians for the PLAYER (none — you build your own push)
+@export var enemy_squad_size: int = 2      # starting barbarians for the ENEMY (split 1 left / 1 right)
 @export var wizard_count: int = 0   # no wizards at start — both sides buy them later via elixir
 @export var builder_count: int = 0   # no builders at start — bought later via elixir
 @export var separation_strength: float = 0.5   # fraction of overlap resolved per physics frame (0..1); soft push
 @export var island_half_extent: float = 19.0
 @export var island_octagon_limit: float = 31.0   # |x|+|z| bound; diagonal arena walls sit at 32, units inset 1
 @export var moat_half_width: float = 1.5     # perpendicular half-width of the real grass gap (slab inner edges at +/-1.5)
-@export var bridge_offset: float = 9.1       # each bridge sits this far from centre along the moat (nudged out 0.1 to line up with the 3D deck)
+@export var bridge_offset: float = 8.8       # each bridge sits this far from centre along the moat (collision nudged 0.3 toward centre)
 @export var bridge_half_width: float = 2.6   # half the crossable gap at each bridge
 @export var bridge_capture: float = 0.5      # only a small jostle just past a bridge edge is pulled back onto the lane; walk into the water any further and you're blocked + ejected straight back to your own bank (no long sideways teleport)
 @export var bridge_arc_peak: float = 1.3     # visual height units rise to at a bridge's centre (tune to the deck)
 @export var bridge_arc_span: float = 2.75    # perpendicular half-span where the deck meets the banks (height 0)
-@export var enemy_start_elixir: float = 1.0      # enemy begins with this much (1 = ~6s behind the player's 3)
+@export var enemy_start_elixir: float = -4.0     # starts 4 in the hole to pay back its 2 free starting barbarians (2 mana each); regen climbs it back up
 @export var enemy_brain_interval: float = 0.6    # how often the enemy AI considers a purchase (sec)
 @export var enemy_barb_chance: float = 0.4       # P(barbarian) when the enemy buys at 3 elixir
 @export var enemy_wizard_chance: float = 0.3     # P(wizard); builder gets the remainder (~0.3)
@@ -233,8 +234,9 @@ func spawn_squad(team: int, own_base: Node3D, enemy_base: Node3D) -> void:
 	# +/-bridge_offset laterally) so the squad doesn't spawn directly behind a tower;
 	# they still split left/right and route to the bridges from there.
 	var lane_lateral := bridge_offset * 0.5
-	var half := int(ceil(squad_size / 2.0))
-	for i in squad_size:
+	var n := player_squad_size if team == 0 else enemy_squad_size
+	var half := int(ceil(n / 2.0))
+	for i in n:
 		var lane: Vector3 = MOAT_T * lane_lateral
 		if i >= half:
 			lane = -lane
@@ -1063,10 +1065,12 @@ func _setup_elixir() -> void:
 	ui.bind(_elixir)
 	add_child(ui)
 	_elixir_ui = ui
-	# The enemy's mirror economy: identical elixir model (start/regen/max), no HUD.
-	# It regenerates on its own and is topped up by enemy pumps via add_elixir().
+	# The enemy's mirror economy: same elixir model, no HUD. Regenerates a touch slower
+	# than the player (0.9x) so the player has a small built-in economic edge. The ratio
+	# survives double-elixir time, which scales both sides equally.
 	_enemy_elixir = ELIXIR.new()
 	_enemy_elixir.start_elixir = enemy_start_elixir   # head start: enemy begins behind the player's 3
+	_enemy_elixir.regen_per_sec = _elixir.regen_per_sec * 0.9
 	add_child(_enemy_elixir)
 
 # Load a UI texture. Prefer the imported resource; fall back to reading the PNG

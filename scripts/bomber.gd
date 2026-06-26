@@ -23,7 +23,7 @@ extends Node3D
 @export var visual_scale: float = 1.43     # uniform model scale (matches the rank-and-file)
 @export var trigger_range: float = 1.4     # gap to the target (plus its radius) at which it commits to the jump
 @export var leap_max: float = 3.5          # cap on the forward lunge distance, so it never overshoots the target
-@export var explosion_radius: float = 8.1   # AoE radius of the blast (horizontal) — wide, catches whole clumps (6.75 +20%)
+@export var explosion_radius: float = 6.75   # AoE radius of the blast (horizontal) — wide, catches whole clumps
 @export var explosion_damage: float = 50.0   # AoE hit
 @export var jump_anim_speed: float = 2.0   # snappier leap so it fits the ~0.6s fuse
 @export var explode_delay: float = 0.6     # time from commit to blast (also caps the leap-clip wait)
