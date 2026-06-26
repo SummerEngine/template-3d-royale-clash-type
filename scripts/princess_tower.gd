@@ -30,7 +30,7 @@ func _ready() -> void:
 	_rest_scale = scale.x          # uniform scale baked into the .tscn transform
 	_manager = _find_manager()
 	if _manager != null and _manager.has_method("register_pump"):
-		_manager.register_pump(self, radius, team)   # same channel as elixir pumps: targetable + immovable
+		_manager.register_pump(self, radius, team, false)   # passive: targetable + immovable, but not a Freeze target (doesn't "do stuff")
 	_apply_team_tint()
 	_add_health_bar()
 
@@ -47,6 +47,8 @@ func take_damage(amount: float) -> void:
 
 # Crumble and free. Notably does NOT emit any game-ending signal — the King lives on.
 func _die() -> void:
+	if is_instance_valid(_manager) and _manager.has_method("on_tower_destroyed"):
+		_manager.on_tower_destroyed(team)   # tally a crown for the other side (decides time-up)
 	Juice.boom(global_position, 1.1)   # shake + slow-mo + debris when a tower falls
 	var hb := get_node_or_null("HealthBar")
 	if hb:

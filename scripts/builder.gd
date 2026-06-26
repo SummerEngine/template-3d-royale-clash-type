@@ -18,7 +18,7 @@ extends Node3D
 @export var move_speed: float = 1.9       # units/sec
 @export var turn_speed: float = 6.0       # yaw lerp factor
 @export var radius: float = 0.91          # soft-collision radius; read by manager
-@export var visual_scale: float = 1.3     # uniform model scale (+30%, matches other units)
+@export var visual_scale: float = 1.43    # uniform model scale (+43%, matches other units)
 @export var fade_time: float = 0.8        # seconds to fade the corpse out after the death clip
 @export var march_jitter: float = 0.4     # +/- fraction randomness on the march distance so pumps space out
 @export var pump_spacing: float = 4.0     # won't build this close to an existing pump — marches on to clear ground
@@ -96,6 +96,7 @@ func _ready() -> void:
 	var bar := preload("res://scripts/health_bar.gd").new()
 	bar.name = "HealthBar"
 	add_child(bar)
+	add_child(preload("res://scripts/unit_shadow.gd").new())   # cheap blob shadow under the unit
 	_equip_hammer()
 	SFX.play(self, "res://audio/barbarian_spawn", -24.0)
 

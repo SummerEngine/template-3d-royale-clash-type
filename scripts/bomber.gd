@@ -20,9 +20,10 @@ extends Node3D
 @export var move_speed: float = 2.7        # fast — it wants to reach the line and blow up
 @export var turn_speed: float = 7.0        # yaw lerp factor
 @export var radius: float = 0.91           # soft-collision radius; read by manager
-@export var visual_scale: float = 1.3      # uniform model scale (matches the rank-and-file)
+@export var visual_scale: float = 1.43     # uniform model scale (matches the rank-and-file)
 @export var trigger_range: float = 1.4     # gap to the target (plus its radius) at which it commits to the jump
-@export var explosion_radius: float = 6.75  # AoE radius of the blast (horizontal) — wide, catches whole clumps
+@export var leap_max: float = 3.5          # cap on the forward lunge distance, so it never overshoots the target
+@export var explosion_radius: float = 6.75   # AoE radius of the blast (horizontal) — wide, catches whole clumps
 @export var explosion_damage: float = 50.0   # AoE hit
 @export var jump_anim_speed: float = 2.0   # snappier leap so it fits the ~0.6s fuse
 @export var explode_delay: float = 0.6     # time from commit to blast (also caps the leap-clip wait)
@@ -77,6 +78,7 @@ func _ready() -> void:
 	var bar := preload("res://scripts/health_bar.gd").new()
 	bar.name = "HealthBar"
 	add_child(bar)
+	add_child(preload("res://scripts/unit_shadow.gd").new())   # cheap blob shadow under the unit
 	SFX.play(self, "res://audio/bomber_spawn", -8.0)   # dry skeletal rattle + cackle
 
 # --- Damage / death ---
@@ -138,11 +140,18 @@ func _begin_detonation(target) -> void:
 		return
 	_detonating = true
 	set_process(false)
-	# Detonate where he commits (just a hop in place) rather than leaping onto the
-	# target — the blast was landing too far forward. The wide radius still catches it.
+	# Lunge forward ONTO the target's near edge (capped by leap_max so it never
+	# overshoots), then detonate where it lands — the blast (damage + fireball) is
+	# centred at global_position, which the leap carries to `land`.
 	var land := global_position
 	if is_instance_valid(target):
 		_face_instant(target.global_position)
+		var to: Vector3 = target.global_position - global_position
+		to.y = 0.0
+		var d := to.length()
+		if d > 0.01:
+			var leap_dist: float = clampf(d - target.radius, 0.0, leap_max)
+			land = global_position + (to / d) * leap_dist
 	land.y = _base_y
 	# Play the jump attack, then explode. Timed to the clip (shorter when sped up),
 	# capped at explode_delay (~0.6s); explode_delay is also the fallback with no clip.
@@ -207,7 +216,7 @@ func _explode() -> void:
 # outlive us when we free.
 func _explosion_fx() -> void:
 	Juice.boom(global_position, 1.6)
-	SFX.play(self, "res://audio/bomber_explode", 2.0)
+	SFX.play(self, "res://audio/big_explosion", 5.0)
 	var host := get_parent()
 	if host == null:
 		return

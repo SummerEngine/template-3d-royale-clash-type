@@ -19,7 +19,7 @@ extends Node3D
 @export var attack_cooldown: float = 1.1
 @export var aggro_radius: float = 7.0
 @export var radius: float = 0.91          # soft-collision radius; read by manager (0.7 base, +30% to match the +30% model scale)
-@export var visual_scale: float = 1.3     # uniform model scale (+30%)
+@export var visual_scale: float = 1.43    # uniform model scale (+43%)
 @export var swing_time: float = 0.32      # duration of the procedural attack chop
 @export var swing_angle: float = 0.7      # peak forward pitch of the chop (radians)
 @export var attack_anim_speed: float = 2.0   # play the attack clip this much faster
@@ -92,6 +92,7 @@ func _ready() -> void:
 	var bar := preload("res://scripts/health_bar.gd").new()
 	bar.name = "HealthBar"
 	add_child(bar)
+	add_child(preload("res://scripts/unit_shadow.gd").new())   # cheap blob shadow under the unit
 	_equip_weapon()
 	SFX.play(self, "res://audio/barbarian_spawn", -24.0)
 

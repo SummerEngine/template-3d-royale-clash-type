@@ -1,14 +1,12 @@
 extends Control
-## One Clash-Royale-style spawn card: a textured button with a "ready" glow halo
-## behind it, press-pop / can't-afford-wiggle juice, optional cost-drop pips, and
-## an affordability pulse driven by the shared elixir economy.
+## One Clash-Royale-style spawn card: a textured button with a one-time orange "tap me"
+## pulse (retired on the first interaction with any card), press-pop / can't-afford-wiggle
+## juice, optional cost-drop pips, and a radial affordability sweep driven by the elixir economy.
 ##
 ## Self-contained: the battle manager builds one card per spawnable unit. ALL
 ## gameplay (base check, afford test, spend, spawn) lives in the `on_press`
 ## callback the manager supplies — this node only renders feedback. The callback
 ## returns one of the result codes below and the card plays the matching juice.
-
-const PAD := 20.0   # glow-halo padding around the button, in px
 
 # Radial affordability sweep: a dark overlay over the card art whose clockwise pie
 # wedge clears from 12 o'clock as current/cost climbs (0 = fully dark, 1 = clear).
@@ -38,8 +36,8 @@ var _controller = null             # deploy_controller.gd — handles the drag-t
 var _unit_def: Dictionary = {}     # { glb, scale, spawn_fn } handed to the controller on press
 
 var _btn: TextureButton = null
-var _glow: Panel = null
-var _glow_tween: Tween = null
+var _hint_tween: Tween = null      # looping orange "tap me" pulse on the button
+var _hint_done: bool = false       # latched once the player engages any card; the pulse never returns
 var _affordable: bool = false
 var _afford_inited: bool = false
 var _radial: ColorRect = null      # dark radial "cooldown" sweep over the art (RADIAL_SHADER)
@@ -61,22 +59,6 @@ func setup(button_size: float, texture: Texture2D, cost: float, drop_count: int,
 		_update_radial(_elixir.current)
 
 func _build(button_size: float, texture: Texture2D, drop_count: int, drop_texture: Texture2D) -> void:
-	# Soft "ready" glow halo behind the button (card rect + PAD), pulsed by afford.
-	_glow = Panel.new()
-	_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_glow.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_glow.offset_left = -PAD
-	_glow.offset_top = -PAD
-	_glow.offset_right = PAD
-	_glow.offset_bottom = PAD
-	var glow_style := StyleBoxFlat.new()
-	glow_style.bg_color = Color(1, 1, 1, 1)   # actual colour comes from self_modulate
-	glow_style.set_corner_radius_all(int((button_size + 2.0 * PAD) * 0.5))
-	_glow.add_theme_stylebox_override("panel", glow_style)
-	_glow.self_modulate = Color(1.0, 0.85, 0.35)
-	_glow.modulate.a = 0.0
-	add_child(_glow)
-
 	# The button fills the card rect; scale/rotate from its centre for the juice.
 	_btn = TextureButton.new()
 	if texture != null:
@@ -89,6 +71,7 @@ func _build(button_size: float, texture: Texture2D, drop_count: int, drop_textur
 	_btn.button_down.connect(_on_down)
 	_btn.button_up.connect(_on_up)
 	add_child(_btn)
+	_start_hint_pulse()   # gentle orange "tap me" pulse until the first interaction
 
 	# Radial affordability sweep over the art. Sits above the button, below the cost
 	# pips (added next), and ignores the mouse so the button still receives presses.
@@ -131,12 +114,49 @@ func _build_drops(button_size: float, drop_count: int, drop_texture: Texture2D) 
 # Press: ask the deploy controller to start a drag. If it can't (unaffordable),
 # the controller plays the denied feedback and the card wiggles.
 func _on_down() -> void:
+	_dismiss_all_hints()   # first interaction with ANY card retires every orange pulse
 	if _controller == null:
 		return
 	if _controller.begin(self, _cost, _unit_def):
 		press_pop()          # immediate flash the moment the press lands
 	else:
 		reject_wiggle()
+
+# A gentle looping orange tint on the button itself — a "tap me" hint shown until the
+# player first engages a card. Drives self_modulate so it stacks cleanly with the press /
+# afford pops (which drive modulate) and resets to white when retired.
+func _start_hint_pulse() -> void:
+	if _btn == null or _hint_done:
+		return
+	if _hint_tween != null and _hint_tween.is_valid():
+		_hint_tween.kill()
+	_btn.self_modulate = Color(1, 1, 1, 1)
+	# Brighten R+G above 1.0 (and pull B down) so it pulses a bright yellow GLOW rather
+	# than multiplying toward a darker tint.
+	_hint_tween = create_tween().set_loops()
+	_hint_tween.tween_property(_btn, "self_modulate", Color(1.9, 1.75, 0.55, 1.0), 0.55).set_trans(Tween.TRANS_SINE)
+	_hint_tween.tween_property(_btn, "self_modulate", Color(1, 1, 1, 1), 0.55).set_trans(Tween.TRANS_SINE)
+
+# The orange pulse is a one-time hint. The moment the player presses or starts dragging
+# ANY card, kill every card's pulse for the rest of the match. Cards are all siblings
+# under the same CanvasLayer, so we just sweep the parent's children.
+func _dismiss_all_hints() -> void:
+	var parent := get_parent()
+	if parent == null:
+		dismiss_hint()
+		return
+	for c in parent.get_children():
+		if c.has_method("dismiss_hint"):
+			c.dismiss_hint()
+
+# Retire this card's hint pulse permanently (stops the tween, clears the tint, and latches
+# a flag so it can never restart).
+func dismiss_hint() -> void:
+	_hint_done = true
+	if _hint_tween != null and _hint_tween.is_valid():
+		_hint_tween.kill()
+	if _btn != null:
+		_btn.self_modulate = Color(1, 1, 1, 1)
 
 # Release: hand off to the controller to deploy (over field) or cancel (over card).
 func _on_up() -> void:
@@ -172,7 +192,7 @@ func success_pop() -> void:
 	t.tween_property(_btn, "modulate", Color(1, 1, 1, 1), 0.28)
 
 # Just became affordable: a quick grow + bright flash that says "you can afford
-# this now" — a one-shot cue on top of the steady gold "ready" glow.
+# this now" — a one-shot cue as the radial cooldown sweep finishes clearing.
 func afford_pop() -> void:
 	if _btn == null:
 		return
@@ -215,26 +235,14 @@ func _update_radial(current_amount: float) -> void:
 		mat.set_shader_parameter("progress", progress)
 	_radial.visible = progress < 1.0
 
-# Recolour + pulse the glow to signal whether THIS card is affordable right now.
+# Fire the one-shot "you can afford this now" pop the moment THIS card crosses into
+# affordable (steady-state affordability is shown by the radial sweep, not a glow).
 func _set_affordable(can: bool) -> void:
 	if _afford_inited and can == _affordable:
 		return
 	# Just crossed into affordable mid-game (not the initial paint at game start)?
-	# Flash the card as a "you can afford this now!" cue.
 	var just_afforded := _afford_inited and can and not _affordable
 	_afford_inited = true
 	_affordable = can
 	if just_afforded:
 		afford_pop()
-	if _glow == null:
-		return
-	if _glow_tween != null and _glow_tween.is_valid():
-		_glow_tween.kill()
-	if can:
-		_glow.self_modulate = Color(1.0, 0.85, 0.35)   # warm gold = ready
-		_glow_tween = create_tween().set_loops()
-		_glow_tween.tween_property(_glow, "modulate:a", 0.6, 0.6).set_trans(Tween.TRANS_SINE)
-		_glow_tween.tween_property(_glow, "modulate:a", 0.18, 0.6).set_trans(Tween.TRANS_SINE)
-	else:
-		_glow.self_modulate = Color(0.6, 0.6, 0.65)     # dull = can't afford
-		_glow.modulate.a = 0.0

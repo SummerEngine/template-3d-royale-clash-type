@@ -20,7 +20,7 @@ extends Node3D
 @export var attack_cooldown: float = 1.8
 @export var aggro_radius: float = 11.0
 @export var radius: float = 0.91          # soft-collision radius; read by manager
-@export var visual_scale: float = 1.3     # uniform model scale (+30%)
+@export var visual_scale: float = 1.43    # uniform model scale (+43%)
 @export var fade_time: float = 0.8        # seconds to fade the corpse out after the death clip
 @export var attack_anim_speed: float = 2.0   # play the cast clip this much faster
 @export var attack_hit_delay: float = 0.5    # seconds into the cast before the fireball launches
@@ -82,6 +82,7 @@ func _ready() -> void:
 	var bar := preload("res://scripts/health_bar.gd").new()
 	bar.name = "HealthBar"
 	add_child(bar)
+	add_child(preload("res://scripts/unit_shadow.gd").new())   # cheap blob shadow under the unit
 	SFX.play(self, "res://audio/wizard_spawn", -8.0)
 
 # --- Damage / death ---
@@ -239,6 +240,7 @@ func _schedule_cast(target) -> void:
 	await get_tree().create_timer(attack_hit_delay).timeout
 	if not alive or not is_instance_valid(target) or not target.alive:
 		return
+	_snap_face(target.global_position)   # re-aim at launch so the body points exactly where the fireball flies
 	var fb = preload("res://scripts/fireball.gd").new()
 	get_parent().add_child(fb)
 	fb.launch(global_position + Vector3(0, 1.6, 0), target, damage)
@@ -270,14 +272,13 @@ func _process(delta: float) -> void:
 		_stand()
 		if _attack_timer <= 0.0:
 			_attack_timer = attack_cooldown
+			_snap_face(target.global_position)   # point at the target the instant we commit (no lerp lag while _attacking freezes _process)
 			SFX.play(self, "res://audio/wizard_cast", -10.0)
 			if _attack_clip != "":
 				_attacking = true
 				_play(_attack_clip, false, attack_anim_speed)
 			# Spawn one fireball that deals the damage on arrival.
 			_schedule_cast(target)   # fireball launches partway into the cast, not at frame 0
-			pass
-			pass
 		position.y = _bridge_y()
 		return
 
@@ -303,3 +304,12 @@ func _face(toward: Vector3, delta: float) -> void:
 		return
 	var desired_yaw := atan2(to.x, to.z)
 	rotation.y = lerp_angle(rotation.y, desired_yaw, clamp(turn_speed * delta, 0.0, 1.0))
+
+# Instantly snap yaw to a world-space point (used at cast commit / fireball launch so
+# the wizard's body always points the way it's shooting).
+func _snap_face(toward: Vector3) -> void:
+	var to := toward - global_position
+	to.y = 0.0
+	if to.length() < 0.0001:
+		return
+	rotation.y = atan2(to.x, to.z)

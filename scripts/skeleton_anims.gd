@@ -7,9 +7,9 @@ class_name SkeletonAnims
 # against any unit's AnimationPlayer. Mirrors VikingAnims / DwarfAnims.
 
 const SOURCES := [
-	"res://models/skeleton/Meshy_AI_Bomb_Carrying_Skeleto_biped_Animation_Running_withSkin.glb",
-	"res://models/skeleton/Meshy_AI_Bomb_Carrying_Skeleto_biped_Animation_Dead_withSkin.glb",
-	"res://models/skeleton/Meshy_AI_Bomb_Carrying_Skeleto_biped_Animation_Basic_Jump_withSkin.glb",
+	"res://models/skeleton/skeleton_run.glb",
+	"res://models/skeleton/skeleton_dead.glb",
+	"res://models/skeleton/skeleton_jump.glb",
 ]
 
 static var _clips: Dictionary = {}   # animation name -> Animation
