@@ -7,11 +7,11 @@ class_name DwarfAnims
 # AnimationPlayer. Mirrors WizardAnims / VikingAnims.
 
 const SOURCES := [
-	"res://models/dwarf/Meshy_AI_Flying_Dwarf_biped_Animation_Idle_02_withSkin.glb",
-	"res://models/dwarf/Meshy_AI_Flying_Dwarf_biped_Animation_Running_withSkin.glb",
-	"res://models/dwarf/Meshy_AI_Flying_Dwarf_biped_Animation_Dead_withSkin.glb",
-	"res://models/dwarf/Meshy_AI_Flying_Dwarf_biped_Animation_Heavy_Hammer_Swing_withSkin.glb",
-	"res://models/dwarf/Meshy_AI_Flying_Dwarf_biped_Animation_Attack_withSkin.glb",
+	"res://models/dwarf/dwarf_idle02.glb",
+	"res://models/dwarf/dwarf_run.glb",
+	"res://models/dwarf/dwarf_dead.glb",
+	"res://models/dwarf/dwarf_hammer.glb",
+	"res://models/dwarf/dwarf_attack.glb",
 ]
 
 static var _clips: Dictionary = {}   # animation name -> Animation

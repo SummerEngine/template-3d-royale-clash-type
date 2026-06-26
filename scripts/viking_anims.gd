@@ -6,10 +6,10 @@ class_name VikingAnims
 # tracks resolve against any unit's AnimationPlayer.
 
 const SOURCES := [
-	"res://models/viking/Meshy_AI_Viking_Action_Figure__biped_Animation_Attack_withSkin.glb",
-	"res://models/viking/Meshy_AI_Viking_Action_Figure__biped_Animation_Idle_02_withSkin.glb",
-	"res://models/viking/Meshy_AI_Viking_Action_Figure__biped_Animation_Running_withSkin.glb",
-	"res://models/viking/Meshy_AI_Viking_Action_Figure__biped_Animation_Dead_withSkin.glb",
+	"res://models/viking/viking_attack.glb",
+	"res://models/viking/viking_idle02.glb",
+	"res://models/viking/viking_run.glb",
+	"res://models/viking/viking_dead.glb",
 ]
 
 static var _clips: Dictionary = {}   # animation name -> Animation

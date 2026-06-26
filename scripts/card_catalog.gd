@@ -15,7 +15,7 @@ const DEFAULT_LOADOUT := ["giant", "wizard", "barbarian"]
 
 # --- Unlocks / gold --------------------------------------------------------
 const UNLOCK_COST := 100                          # gold to unlock a locked card
-const LOCKED_DEFAULT := ["builder", "bomber", "arrows", "archer_tower"]   # cards that start locked
+const LOCKED_DEFAULT := ["builder", "arrows", "archer_tower", "freeze"]   # cards that start locked
 # Meeting-demo reset: on each app launch, relock the default-locked cards and refill
 # gold to DEMO_START_GOLD, so every tester starts fresh and can unlock + try them.
 # Set DEMO_RESET=false to restore the persistent economy (earned coins + permanent
@@ -120,7 +120,7 @@ static func all() -> Array:
 		{
 			"id": "barbarian", "name": "Barbarian",
 			"texture": "res://ui/barbarian_button.png", "cost": 2.0, "scale": 1.3,
-			"glb": "res://models/viking/Meshy_AI_Viking_Action_Figure__biped_Animation_Walking_withSkin.glb",
+			"glb": "res://models/viking/viking_walk.glb",
 			"script": "res://scripts/barbarian.gd",
 			"flavor": "A reckless brute who charges the nearest enemy and swings until it drops. Cheap, sturdy, and always hungry for a fight.",
 			"stats": [["Role", "Melee"], ["Health", "40"], ["Damage", "8"], ["Hit speed", "1.1s"], ["Move speed", "Medium"]],
@@ -129,7 +129,7 @@ static func all() -> Array:
 		{
 			"id": "wizard", "name": "Wizard",
 			"texture": "res://ui/wizard_button.png", "cost": 3.0, "scale": 1.3,
-			"glb": "res://models/wizard/Meshy_AI_Violet_Archmage_biped_Animation_Walking_withSkin.glb",
+			"glb": "res://models/wizard/wizard_walk.glb",
 			"script": "res://scripts/wizard.gd",
 			"flavor": "Rains fireballs from afar. Devastating at range, but fragile — keep him behind the front line.",
 			"stats": [["Role", "Ranged"], ["Health", "26"], ["Damage", "12"], ["Range", "8"], ["Move speed", "Medium"]],
@@ -140,7 +140,7 @@ static func all() -> Array:
 			# is only the drag-ghost preview size; the unit sets its own big visual_scale.
 			"id": "giant", "name": "Giant",
 			"texture": "res://ui/giant_button.png", "cost": 4.0, "scale": 2.0,
-			"glb": "res://models/giant/Meshy_AI_Barbarian_Behemoth_biped_Animation_Walking_withSkin.glb",
+			"glb": "res://models/giant/giant_walk.glb",
 			"script": "res://scripts/giant.gd",
 			"flavor": "A lumbering behemoth that ignores troops entirely and marches straight for your towers. Slow, but nearly unstoppable.",
 			"stats": [["Role", "Tank"], ["Health", "200"], ["Damage", "30"], ["Targets", "Buildings"], ["Move speed", "Slow"]],
@@ -150,7 +150,7 @@ static func all() -> Array:
 			# Bomber: fast, fragile suicide unit — jumps and explodes for big AoE.
 			"id": "bomber", "name": "Bomber", "unlock_cost": 80,
 			"texture": "res://ui/skeleton_button.png", "cost": 2.0, "scale": 1.3,
-			"glb": "res://models/skeleton/Meshy_AI_Bomb_Carrying_Skeleto_biped_Animation_Walking_withSkin.glb",
+			"glb": "res://models/skeleton/skeleton_walk.glb",
 			"script": "res://scripts/bomber.gd",
 			"flavor": "Sprints in and leaps into a fiery blast that engulfs everything nearby. One use — but what a boom.",
 			"stats": [["Role", "Suicide"], ["Health", "26"], ["Damage", "50 (AoE)"], ["Blast radius", "6.75"], ["Move speed", "Fast"]],
@@ -159,7 +159,7 @@ static func all() -> Array:
 		{
 			"id": "builder", "name": "Builder", "unlock_cost": 180,
 			"texture": "res://ui/builder_button.png", "cost": 4.0, "scale": 1.3,
-			"glb": "res://models/dwarf/Meshy_AI_Flying_Dwarf_biped_Animation_Walking_withSkin.glb",
+			"glb": "res://models/dwarf/dwarf_walk.glb",
 			"script": "res://scripts/builder.gd",
 			"flavor": "Won't throw a punch. Plants elixir pumps to keep your war machine fed — protect him and your economy soars.",
 			"stats": [["Role", "Support"], ["Health", "35"], ["Damage", "—"], ["Builds", "Elixir pumps"], ["Move speed", "Slow"]],

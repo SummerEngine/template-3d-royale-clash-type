@@ -6,10 +6,10 @@ class_name WizardAnims
 # tracks resolve against any unit's AnimationPlayer.
 
 const SOURCES := [
-	"res://models/wizard/Meshy_AI_Violet_Archmage_biped_Animation_mage_soell_cast_3_withSkin.glb",
-	"res://models/wizard/Meshy_AI_Violet_Archmage_biped_Animation_Idle_02_withSkin.glb",
-	"res://models/wizard/Meshy_AI_Violet_Archmage_biped_Animation_Running_withSkin.glb",
-	"res://models/wizard/Meshy_AI_Violet_Archmage_biped_Animation_Dead_withSkin.glb",
+	"res://models/wizard/wizard_cast.glb",
+	"res://models/wizard/wizard_idle02.glb",
+	"res://models/wizard/wizard_run.glb",
+	"res://models/wizard/wizard_dead.glb",
 ]
 
 static var _clips: Dictionary = {}   # animation name -> Animation

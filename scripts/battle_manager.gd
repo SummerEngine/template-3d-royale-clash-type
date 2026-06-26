@@ -4,18 +4,18 @@ extends Node
 # handles player reinforcement input, and detects the winner.
 # One Node placed under the scene root (Main).
 
-const UNIT_GLB := preload("res://models/viking/Meshy_AI_Viking_Action_Figure__biped_Animation_Walking_withSkin.glb")
+const UNIT_GLB := preload("res://models/viking/viking_walk.glb")
 const BARB := preload("res://scripts/barbarian.gd")
-const WIZARD_GLB := preload("res://models/wizard/Meshy_AI_Violet_Archmage_biped_Animation_Walking_withSkin.glb")
+const WIZARD_GLB := preload("res://models/wizard/wizard_walk.glb")
 const WIZ := preload("res://scripts/wizard.gd")
-const BUILDER_GLB := preload("res://models/dwarf/Meshy_AI_Flying_Dwarf_biped_Animation_Walking_withSkin.glb")
+const BUILDER_GLB := preload("res://models/dwarf/dwarf_walk.glb")
 const BUILDER := preload("res://scripts/builder.gd")
 # New units load at runtime (paths, not preload) so the manager still compiles before
 # their freshly-unpacked GLBs have been imported by the editor. Same base-model
 # convention as the others: the Walking GLB is the instanced body, extra clips merge in.
-const GIANT_GLB_PATH := "res://models/giant/Meshy_AI_Barbarian_Behemoth_biped_Animation_Walking_withSkin.glb"
+const GIANT_GLB_PATH := "res://models/giant/giant_walk.glb"
 const GIANT_SCRIPT_PATH := "res://scripts/giant.gd"
-const BOMBER_GLB_PATH := "res://models/skeleton/Meshy_AI_Bomb_Carrying_Skeleto_biped_Animation_Walking_withSkin.glb"
+const BOMBER_GLB_PATH := "res://models/skeleton/skeleton_walk.glb"
 const BOMBER_SCRIPT_PATH := "res://scripts/bomber.gd"
 const ELIXIR := preload("res://scripts/elixir.gd")
 const ELIXIR_UI := preload("res://scripts/elixir_ui.gd")

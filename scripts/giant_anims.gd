@@ -6,10 +6,10 @@ class_name GiantAnims
 # skeleton, so tracks resolve against any unit's AnimationPlayer. Mirrors VikingAnims.
 
 const SOURCES := [
-	"res://models/giant/Meshy_AI_Barbarian_Behemoth_biped_Animation_Idle_02_withSkin.glb",
-	"res://models/giant/Meshy_AI_Barbarian_Behemoth_biped_Animation_Running_withSkin.glb",
-	"res://models/giant/Meshy_AI_Barbarian_Behemoth_biped_Animation_Dead_withSkin.glb",
-	"res://models/giant/Meshy_AI_Barbarian_Behemoth_biped_Animation_Heavy_Hammer_Swing_withSkin.glb",
+	"res://models/giant/giant_idle02.glb",
+	"res://models/giant/giant_run.glb",
+	"res://models/giant/giant_dead.glb",
+	"res://models/giant/giant_hammer.glb",
 ]
 
 static var _clips: Dictionary = {}   # animation name -> Animation
