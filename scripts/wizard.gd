@@ -82,6 +82,7 @@ func _ready() -> void:
 	var bar := preload("res://scripts/health_bar.gd").new()
 	bar.name = "HealthBar"
 	add_child(bar)
+	add_child(preload("res://scripts/unit_shadow.gd").new())   # cheap blob shadow under the unit
 	SFX.play(self, "res://audio/wizard_spawn", -8.0)
 
 # --- Damage / death ---

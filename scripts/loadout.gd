@@ -61,12 +61,26 @@ class CardTile extends Panel:
 # --- Drop target: one deck slot -------------------------------------------
 class DeckSlot extends Panel:
 	var index: int = 0
-	var screen = null   # the loadout screen (untyped: we call its _assign, not a Control method)
+	var screen = null   # the loadout screen (untyped: we call its _assign / _inspect_slot)
+	var _press: Vector2 = Vector2.ZERO
+	var _pressed_in: bool = false
 	func _can_drop_data(_at_position: Vector2, data) -> bool:
 		return typeof(data) == TYPE_DICTIONARY and data.has("card_id")
 	func _drop_data(_at_position: Vector2, data) -> void:
 		if screen != null:
 			screen._assign(index, str(data["card_id"]))
+	# A plain tap on a slot opens the inspector for the card sitting in it (same popup
+	# as the collection tiles). A press+release that moved more than a few px reads as a
+	# swipe, not a tap, so dragging the menu pager over a slot won't pop the inspector.
+	func _gui_input(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed:
+				_press = event.position
+				_pressed_in = true
+			elif _pressed_in:
+				_pressed_in = false
+				if event.position.distance_to(_press) <= 10.0 and screen != null:
+					screen._inspect_slot(index)
 
 
 func _ready() -> void:
@@ -404,6 +418,13 @@ func _refresh_after_unlock() -> void:
 	_update_gold()
 	if on_gold_changed.is_valid():
 		on_gold_changed.call()   # refresh the menu's persistent coin badge
+
+
+# Tap on a deck slot -> inspect whichever card currently sits in that slot.
+func _inspect_slot(i: int) -> void:
+	if i < 0 or i >= _deck.size():
+		return
+	_inspect(str(_deck[i]))
 
 
 # Tap on a collection card -> open the inspect popup for that unit.

@@ -16,14 +16,14 @@ extends Node3D
 #   - Out of range -> face + walk toward it (routed around the moat).
 
 # --- Tunables (designer-balanced; no clamps/floors added) ---
-@export var max_hp: float = 200.0
+@export var max_hp: float = 180.0
 @export var damage: float = 30.0
 @export var move_speed: float = 1.25      # units/sec — deliberately slow
 @export var turn_speed: float = 4.0       # yaw lerp factor
 @export var attack_range: float = 1.8     # must exceed structure push-out so the swing connects
 @export var attack_cooldown: float = 1.6
 @export var radius: float = 1.5           # soft-collision radius; read by manager (big footprint)
-@export var visual_scale: float = 2.64    # uniform model scale — towers over the rank-and-file
+@export var visual_scale: float = 2.376   # uniform model scale — towers over the rank-and-file (2.64 -10%)
 @export var swing_time: float = 0.4       # fallback procedural chop duration (if no clip)
 @export var swing_angle: float = 0.6      # peak forward pitch of the fallback chop (radians)
 @export var attack_anim_speed: float = 1.4   # play the hammer clip this much faster
@@ -87,6 +87,7 @@ func _ready() -> void:
 	var bar := preload("res://scripts/health_bar.gd").new()
 	bar.name = "HealthBar"
 	add_child(bar)
+	add_child(preload("res://scripts/unit_shadow.gd").new())   # cheap blob shadow under the unit
 	SFX.play(self, "res://audio/giant_spawn", -6.0)   # dedicated giant arrival stomp
 
 # --- Damage / death ---

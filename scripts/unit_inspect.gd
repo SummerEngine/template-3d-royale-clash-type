@@ -20,7 +20,9 @@ var _def: Dictionary = {}
 var _card: Panel
 var _backdrop: ColorRect
 var _click: AudioStreamPlayer = null
-var _chime: AudioStreamPlayer = null     # triumphant unlock-purchase sound
+var _chime: AudioStreamPlayer = null     # fallback reward sound (legacy unlock.wav)
+var _unlock_sfx: AudioStreamPlayer = null   # triumphant unlock fanfare
+var _upgrade_sfx: AudioStreamPlayer = null  # magical upgrade power-up
 var _denied: AudioStreamPlayer = null    # can't-afford buzz (reuses the in-match one)
 var _unlock_btn: Button = null           # only built for locked cards
 var _upgrade_btn: Button = null          # only built for unlocked cards
@@ -49,6 +51,10 @@ func _ready() -> void:
 		_chime.stream = load(chime_path)
 		_chime.bus = "SFX"
 		add_child(_chime)
+	# Dedicated reward stings: a triumphant fanfare for an unlock, a magical power-up
+	# for a level-up. Both fall back to the legacy chime if not present yet.
+	_unlock_sfx = _mk_sfx("res://audio/unlock_fanfare", 0.0)
+	_upgrade_sfx = _mk_sfx("res://audio/upgrade_powerup", 0.0)
 	# Can't-afford buzz — reuse the in-match deploy-denied sound.
 	var denied_path := "res://audio/spawn_denied.wav"
 	if ResourceLoader.exists(denied_path):
@@ -232,11 +238,11 @@ func _build_card() -> void:
 func _on_unlock() -> void:
 	var card_id := str(_def.get("id", ""))
 	if CATALOG.try_unlock(card_id):
-		if _chime != null and _chime.stream != null:
-			_chime.play()
+		_play_reward(_unlock_sfx)
 		if _unlock_btn != null:
 			_unlock_btn.text = "OWNED"
 			_unlock_btn.disabled = true
+		_celebrate(true)
 		_show_banner("UNLOCKED!", GOLD)
 		if on_unlocked.is_valid():
 			on_unlocked.call()
@@ -256,8 +262,8 @@ func _on_upgrade() -> void:
 	var card_id := str(_def.get("id", ""))
 	var new_lvl := CATALOG.try_upgrade(card_id)
 	if new_lvl > 0:
-		if _chime != null and _chime.stream != null:
-			_chime.play()
+		_play_reward(_upgrade_sfx)
+		_celebrate(false)
 		_show_banner("LEVEL %d!" % new_lvl, GOLD)
 		_refresh_level_label(card_id)
 		_refresh_upgrade_label(card_id)
@@ -302,13 +308,20 @@ func _scale_stat_text(val: String, mult: float) -> String:
 	return ("%d" % int(round(num))) + val.substr(i)   # always a whole number
 
 
-# Re-render the scalable stat rows (and recolor them gold) after an upgrade.
+# Re-render the scalable stat rows after an upgrade: bump the new value, flash it
+# bright, and leave it gold so a boosted stat reads as upgraded.
 func _refresh_stats(id: String) -> void:
 	var mult := CATALOG.level_multiplier(id)
 	for r in _scalable_rows:
 		var v: Label = r["node"]
-		if is_instance_valid(v):
-			v.text = _scale_stat_text(str(r["base"]), mult)
+		if not is_instance_valid(v):
+			continue
+		v.text = _scale_stat_text(str(r["base"]), mult)
+		v.add_theme_color_override("font_color", GOLD)
+		v.pivot_offset = v.size * 0.5
+		var t := create_tween()
+		t.tween_property(v, "scale", Vector2(1.35, 1.35), 0.12).set_ease(Tween.EASE_OUT)
+		t.tween_property(v, "scale", Vector2.ONE, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 # Big banner text that pops in over the card, holds, then fades and frees.
@@ -364,6 +377,105 @@ func _show_cant_afford() -> void:
 	t.tween_property(lbl, "modulate:a", 0.0, 0.35)
 	t.tween_callback(lbl.queue_free)
 
+
+# --- Reward juice ----------------------------------------------------------
+# The full celebration fired on a successful unlock/upgrade: a screen flash, a
+# card punch, an expanding shine ring and a confetti burst from screen centre.
+func _celebrate(is_unlock: bool) -> void:
+	var center := get_viewport_rect().size * 0.5
+	_gold_flash()
+	_punch_card()
+	_ring_burst(center)
+	# Gold + white always; a blue accent for unlocks, purple for level-ups.
+	_confetti_burst(center, Color(0.32, 0.62, 1.0) if is_unlock else Color(0.72, 0.42, 1.0))
+
+# Brief warm flash across the whole popup.
+func _gold_flash() -> void:
+	var f := ColorRect.new()
+	f.color = Color(1.0, 0.85, 0.4, 0.0)
+	f.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	f.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(f)
+	var t := create_tween()
+	t.tween_property(f, "color:a", 0.42, 0.06)
+	t.tween_property(f, "color:a", 0.0, 0.34)
+	t.tween_callback(f.queue_free)
+
+# Satisfying scale-bounce of the whole card.
+func _punch_card() -> void:
+	if _card == null:
+		return
+	_card.scale = Vector2.ONE
+	var t := create_tween()
+	t.tween_property(_card, "scale", Vector2(1.07, 1.07), 0.09).set_ease(Tween.EASE_OUT)
+	t.tween_property(_card, "scale", Vector2.ONE, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+# A gold ring that expands outward from `center` and fades.
+func _ring_burst(center: Vector2) -> void:
+	var d := 130.0
+	var ring := Panel.new()
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color(0, 0, 0, 0)
+	s.border_color = Color(1.0, 0.86, 0.42, 0.95)
+	s.set_border_width_all(10)
+	s.set_corner_radius_all(int(d * 0.5))
+	ring.add_theme_stylebox_override("panel", s)
+	ring.size = Vector2(d, d)
+	ring.pivot_offset = Vector2(d * 0.5, d * 0.5)
+	ring.position = center - Vector2(d * 0.5, d * 0.5)
+	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(ring)
+	var t := create_tween()
+	t.set_parallel(true)
+	t.tween_property(ring, "scale", Vector2(6.5, 6.5), 0.5).set_ease(Tween.EASE_OUT)
+	t.tween_property(ring, "modulate:a", 0.0, 0.5)
+	t.set_parallel(false)
+	t.tween_callback(ring.queue_free)
+
+# Explosive confetti from `center`: gold, white and an accent colour, raining down.
+func _confetti_burst(center: Vector2, accent: Color) -> void:
+	for spec in [[GOLD, 42], [Color(1, 1, 1), 22], [accent, 26]]:
+		var p := CPUParticles2D.new()
+		p.position = center
+		p.one_shot = true
+		p.emitting = true
+		p.explosiveness = 0.92
+		p.amount = int(spec[1])
+		p.lifetime = 0.95
+		p.direction = Vector2(0, -1)
+		p.spread = 180.0
+		p.gravity = Vector2(0, 720)
+		p.initial_velocity_min = 270.0
+		p.initial_velocity_max = 700.0
+		p.scale_amount_min = 5.0
+		p.scale_amount_max = 12.0
+		p.angular_velocity_min = -500.0
+		p.angular_velocity_max = 500.0
+		p.damping_min = 40.0
+		p.damping_max = 95.0
+		p.color = spec[0]
+		add_child(p)
+		get_tree().create_timer(1.4).timeout.connect(p.queue_free)
+
+# Build an SFX player from a base path, trying common extensions. Null if missing.
+func _mk_sfx(base: String, vol: float) -> AudioStreamPlayer:
+	for ext in [".wav", ".ogg", ".mp3"]:
+		var path: String = base + ext
+		if ResourceLoader.exists(path):
+			var sp := AudioStreamPlayer.new()
+			sp.stream = load(path)
+			sp.bus = "SFX"
+			sp.volume_db = vol
+			add_child(sp)
+			return sp
+	return null
+
+# Play a reward sting, falling back to the legacy chime if the dedicated one is absent.
+func _play_reward(sp: AudioStreamPlayer) -> void:
+	if sp != null and sp.stream != null:
+		sp.play()
+	elif _chime != null and _chime.stream != null:
+		_chime.play()
 
 func _rule() -> Control:
 	var r := ColorRect.new()

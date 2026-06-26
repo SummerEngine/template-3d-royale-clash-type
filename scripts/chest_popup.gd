@@ -16,6 +16,9 @@ const CHEST_SIZE := 380.0
 const GOLD_MIN := 50
 const GOLD_MAX := 300
 
+# How long the over-the-top celebration runs before the chest settles to "tap to close".
+const CELEBRATE_DUR := 3.0
+
 # Called after gold is awarded so the menu can refresh its coin badge.
 var on_gold_changed: Callable = Callable()
 
@@ -24,14 +27,26 @@ var _backdrop: ColorRect
 var _chest: TextureRect
 var _hint: Label
 var _coin_tex: Texture2D
+var _star_tex: Texture2D      # cached once — the party reuses these, never regenerates
+var _ring_tex: Texture2D
+var _sun_tex: Texture2D
 var _center: Vector2
+
+# Trauma-based screen shake of the whole overlay (fed by _kick_shake, applied in _process).
+var _trauma: float = 0.0
+var _shaking: bool = false
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP   # this Control catches every tap (see _gui_input)
 	var vp := get_viewport_rect().size
 	_center = Vector2(vp.x * 0.5, vp.y * 0.5 + 30.0)
+	# Build every code-drawn texture ONCE up front so the 3s party can spawn hundreds
+	# of sprites without ever regenerating an image mid-celebration.
 	_coin_tex = _make_coin(48)
+	_star_tex = _make_star(40)
+	_ring_tex = _make_ring(192)
+	_sun_tex = _make_sunburst(256)
 
 	_backdrop = ColorRect.new()
 	_backdrop.color = Color(0, 0, 0, 0)
@@ -83,6 +98,23 @@ func _gui_input(event: InputEvent) -> void:
 	elif _state == 2:
 		_close()
 
+# Shake the whole overlay while there's trauma, then settle exactly back to (0,0).
+# Trauma is fed by _kick_shake and decays on its own, so repeated kicks during the
+# party keep a continuous rumble without stacking conflicting position tweens.
+func _process(delta: float) -> void:
+	if _trauma > 0.0:
+		_trauma = maxf(_trauma - delta * 1.4, 0.0)
+		var s := _trauma * _trauma
+		position = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * 26.0 * s
+		_shaking = true
+	elif _shaking:
+		position = Vector2.ZERO
+		_shaking = false
+
+# Add a jolt of screen-shake trauma (clamped to 1.0 = max shake).
+func _kick_shake(amount: float = 1.0) -> void:
+	_trauma = minf(_trauma + amount, 1.0)
+
 # Keep nudging the hint so it reads as "tap me".
 func _pulse_hint() -> void:
 	if not is_instance_valid(_hint):
@@ -108,11 +140,19 @@ func _open() -> void:
 	_chest.texture = _load_tex(CHEST_OPEN)
 	SFX.play(self, "res://audio/elixir_full", 0.0, 0.0)
 	SFX.play(self, "res://audio/victory", -4.0, 0.0)
+	# Punchy squash-and-stretch lid pop: overshoot tall, squash wide, settle elastic.
 	var pop := create_tween()
-	pop.tween_property(_chest, "scale", Vector2(1.28, 1.28), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	pop.tween_property(_chest, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop.tween_property(_chest, "scale", Vector2(1.42, 1.18), 0.10).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop.tween_property(_chest, "scale", Vector2(0.92, 1.08), 0.09).set_trans(Tween.TRANS_SINE)
+	pop.tween_property(_chest, "scale", Vector2.ONE, 0.30).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	# The opening hit — the full juice stack, all on the lid-pop frame.
+	_screen_flash()
+	_light_rays()
+	_shockwave()
+	_kick_shake(1.0)
 	_flash()
-	_coin_burst(22)
+	_coin_burst(40)
+	_sparkle_burst(20)
 
 	var amount := randi_range(GOLD_MIN, GOLD_MAX)
 	PROFILE.add_coins(amount)
@@ -120,12 +160,84 @@ func _open() -> void:
 		on_gold_changed.call()
 	_show_free_gold(amount)
 
-	await get_tree().create_timer(0.9).timeout
+	# 3) Sustained mayhem: ~3 seconds of raining coins, sparkles, ring pulses, god-rays
+	# and a continuous cha-ching cascade, then the chest calms down to "tap to close".
+	await _party()
 	if not is_instance_valid(self):
 		return
 	_state = 2
 	_hint.text = "Tap to close"
 	_hint.visible = true
+
+# The over-the-top celebration loop. Drives everything off a fixed time step so the
+# spawn rate is identical regardless of framerate, and keeps the live-sprite count
+# bounded (short-lived coins/sparkles) so it stays smooth on a phone.
+func _party() -> void:
+	const STEP := 0.05
+	var ticks := int(CELEBRATE_DUR / STEP)
+	for i in ticks:
+		await get_tree().create_timer(STEP).timeout
+		if not is_instance_valid(self) or not is_instance_valid(_chest):
+			return
+		# Coins every tick — a relentless fountain + rain.
+		_coin_wave(randi_range(4, 7))
+		# Twinkles most ticks.
+		if i % 2 == 0:
+			_sparkle_burst(5)
+		# Coin clinks, rapid and pitch-scattered, for the "cha-ching cascade".
+		if i % 2 == 0:
+			SFX.play(self, "res://audio/elixir_collect", -9.0, 0.0, randf_range(0.85, 1.7))
+		# Every ~0.5s: a ring pulse, a soft flash, a fresh shake kick and a big chime.
+		if i % 10 == 0:
+			_shockwave()
+			_screen_flash(0.28)
+			_kick_shake(0.55)
+			SFX.play(self, "res://audio/elixir_full", -5.0)
+		# Every ~0.75s: a fresh burst of god-rays + a sparkly accent.
+		if i % 15 == 7:
+			_light_rays()
+			SFX.play(self, "res://audio/upgrade_powerup", -7.0)
+		# A couple of big punctuating booms across the 3 seconds.
+		if i == 18 or i == 42:
+			SFX.play(self, "res://audio/gong", -6.0)
+			_kick_shake(0.7)
+	# One last spray as it winds down.
+	_coin_burst(30)
+	_sparkle_burst(14)
+
+# A lighter, continuously-emitted coin spray: some erupt up out of the chest, the
+# rest rain down from above the top edge. Each coin frees itself when it lands.
+func _coin_wave(n: int) -> void:
+	var vp := get_viewport_rect().size
+	for i in n:
+		var coin := TextureRect.new()
+		coin.texture = _coin_tex
+		coin.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		coin.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		coin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var sz := randf_range(30.0, 52.0)
+		coin.size = Vector2(sz, sz)
+		coin.pivot_offset = Vector2(sz, sz) * 0.5
+		var t := coin.create_tween()
+		if randf() < 0.5:
+			# Erupt from the chest in an upward arc, then fall off the bottom.
+			coin.position = _center - Vector2(sz, sz) * 0.5 + Vector2(randf_range(-50, 50), -CHEST_SIZE * 0.18)
+			add_child(coin)
+			var ang := randf_range(-2.5, -0.65)
+			var dist := randf_range(160.0, 380.0)
+			var apex := coin.position + Vector2(cos(ang), sin(ang)) * dist
+			var land := Vector2(apex.x + randf_range(-40, 40), vp.y + 80.0)
+			t.tween_property(coin, "position", apex, 0.42).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			t.tween_property(coin, "position", land, 0.7).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		else:
+			# Rain down from just above the top edge to just below the bottom.
+			var x := randf_range(0.0, vp.x)
+			coin.position = Vector2(x, -sz - randf_range(0.0, 200.0))
+			add_child(coin)
+			t.tween_property(coin, "position:y", vp.y + 80.0, randf_range(0.7, 1.2)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		t.tween_callback(coin.queue_free)
+		var spin := coin.create_tween().set_loops()
+		spin.tween_property(coin, "rotation", TAU, randf_range(0.4, 0.8))
 
 func _close() -> void:
 	_state = 1   # block further taps
@@ -185,6 +297,107 @@ func _coin_burst(n: int) -> void:
 		t.tween_callback(coin.queue_free)
 		var spin := coin.create_tween().set_loops()
 		spin.tween_property(coin, "rotation", TAU, randf_range(0.4, 0.8))
+
+# A short burst of twinkling stars around the chest that pop in then fade.
+func _sparkle_burst(n: int) -> void:
+	for i in n:
+		var s := TextureRect.new()
+		s.texture = _star_tex
+		s.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		s.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		s.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var mat := CanvasItemMaterial.new()
+		mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		s.material = mat
+		var sz := randf_range(18.0, 44.0)
+		s.size = Vector2(sz, sz)
+		s.pivot_offset = Vector2(sz, sz) * 0.5
+		var ang := randf_range(0.0, TAU)
+		var rad := randf_range(60.0, CHEST_SIZE * 0.6)
+		s.position = _center + Vector2(cos(ang), sin(ang)) * rad - Vector2(sz, sz) * 0.5
+		s.scale = Vector2.ZERO
+		s.modulate = Color(1.0, 0.95, 0.6, 1.0)
+		add_child(s)
+		var delay := randf_range(0.0, 0.35)
+		var t := s.create_tween()
+		t.tween_interval(delay)
+		t.tween_property(s, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		t.tween_property(s, "scale", Vector2(0.2, 0.2), 0.3).set_ease(Tween.EASE_IN)
+		var f := s.create_tween()
+		f.tween_interval(delay + 0.14)
+		f.tween_property(s, "modulate:a", 0.0, 0.3)
+		f.tween_callback(s.queue_free)
+		var spin := s.create_tween().set_loops()
+		spin.tween_property(s, "rotation", TAU, randf_range(0.8, 1.4))
+
+# A single bright full-screen white flash that snaps in and fades — the "open" hit.
+func _screen_flash(peak: float = 0.55) -> void:
+	var f := ColorRect.new()
+	f.color = Color(1.0, 0.97, 0.85, 0.0)
+	f.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	f.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := CanvasItemMaterial.new()
+	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	f.material = mat
+	add_child(f)
+	move_child(f, _chest.get_index())   # flash behind the chest so the chest stays readable
+	var t := f.create_tween()
+	t.tween_property(f, "color:a", peak, 0.05).set_ease(Tween.EASE_OUT)
+	t.tween_property(f, "color:a", 0.0, 0.35).set_ease(Tween.EASE_IN)
+	t.tween_callback(f.queue_free)
+
+# A radiant sunburst of golden god-rays behind the chest that blooms out and slowly
+# spins as it fades — that "jackpot" loot shimmer.
+func _light_rays() -> void:
+	var rays := TextureRect.new()
+	rays.texture = _sun_tex
+	rays.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rays.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	rays.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rays.modulate = Color(1.0, 0.88, 0.45, 0.0)
+	var mat := CanvasItemMaterial.new()
+	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	rays.material = mat
+	var s0 := 220.0
+	rays.size = Vector2(s0, s0)
+	rays.pivot_offset = Vector2(s0, s0) * 0.5
+	rays.position = _center - Vector2(s0, s0) * 0.5
+	rays.scale = Vector2(0.4, 0.4)
+	add_child(rays)
+	move_child(rays, _chest.get_index())   # behind the chest
+	# Bloom out + slow spin, while the alpha snaps up then fades over the full life.
+	var t := rays.create_tween()
+	t.set_parallel(true)
+	t.tween_property(rays, "scale", Vector2(3.4, 3.4), 1.1).set_ease(Tween.EASE_OUT)
+	t.tween_property(rays, "rotation", 0.6, 1.1).set_ease(Tween.EASE_OUT)
+	var a := rays.create_tween()
+	a.tween_property(rays, "modulate:a", 0.85, 0.12)
+	a.tween_property(rays, "modulate:a", 0.0, 0.95).set_ease(Tween.EASE_IN)
+	a.tween_callback(rays.queue_free)
+
+# An expanding hollow ring shockwave that rushes outward and thins to nothing.
+func _shockwave() -> void:
+	var ring := TextureRect.new()
+	ring.texture = _ring_tex
+	ring.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ring.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ring.modulate = Color(1.0, 0.92, 0.6, 0.9)
+	var mat := CanvasItemMaterial.new()
+	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	ring.material = mat
+	var s0 := 160.0
+	ring.size = Vector2(s0, s0)
+	ring.pivot_offset = Vector2(s0, s0) * 0.5
+	ring.position = _center - Vector2(s0, s0) * 0.5
+	ring.scale = Vector2(0.25, 0.25)
+	add_child(ring)
+	move_child(ring, _chest.get_index())
+	var t := ring.create_tween()
+	t.set_parallel(true)
+	t.tween_property(ring, "scale", Vector2(4.5, 4.5), 0.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(ring, "modulate:a", 0.0, 0.5).set_ease(Tween.EASE_IN)
+	t.chain().tween_callback(ring.queue_free)
 
 # "FREE GOLD!" sprite slams in from above with a bounce, plus a "+N" gold tally.
 func _show_free_gold(amount: int) -> void:
@@ -256,6 +469,67 @@ func _make_coin(d: int) -> ImageTexture:
 				col = Color(0.95, 0.74, 0.22)            # gold body
 			col.a = a
 			img.set_pixel(x, y, col)
+	return ImageTexture.create_from_image(img)
+
+# A soft 4-point sparkle star (bright core + tapering arms), drawn in code.
+func _make_star(d: int) -> ImageTexture:
+	var img := Image.create(d, d, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var c := (d - 1) * 0.5
+	var r := d * 0.5
+	for y in d:
+		for x in d:
+			var dx := absf(float(x) - c)
+			var dy := absf(float(y) - c)
+			var dist := Vector2(dx, dy).length()
+			# Four-point twinkle: brightness falls off along the diagonals fastest.
+			var arm := maxf(0.0, 1.0 - (dx + dy) / r)
+			var core := maxf(0.0, 1.0 - dist / (r * 0.35))
+			var a := clampf(arm * arm * 0.9 + core, 0.0, 1.0)
+			if a <= 0.01:
+				continue
+			img.set_pixel(x, y, Color(1.0, 0.97, 0.78, a))
+	return ImageTexture.create_from_image(img)
+
+# A radial sunburst (alternating bright/transparent wedges, fading toward the rim).
+func _make_sunburst(d: int) -> ImageTexture:
+	var img := Image.create(d, d, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var c := (d - 1) * 0.5
+	var r := d * 0.5
+	var spokes := 16.0
+	for y in d:
+		for x in d:
+			var dx := float(x) - c
+			var dy := float(y) - c
+			var dist := Vector2(dx, dy).length()
+			if dist >= r:
+				continue
+			var ang := atan2(dy, dx)
+			var wedge := 0.5 + 0.5 * sin(ang * spokes)   # 0..1 around the circle
+			wedge = smoothstep(0.45, 0.95, wedge)        # crisp the rays
+			var fall := 1.0 - dist / r                     # fade out toward the rim
+			var a := clampf(wedge * fall * fall, 0.0, 1.0)
+			if a <= 0.01:
+				continue
+			img.set_pixel(x, y, Color(1.0, 0.9, 0.5, a))
+	return ImageTexture.create_from_image(img)
+
+# A hollow ring (bright annulus, soft inner+outer edges) for the shockwave.
+func _make_ring(d: int) -> ImageTexture:
+	var img := Image.create(d, d, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var c := (d - 1) * 0.5
+	var r := d * 0.5
+	var mid := r * 0.82           # radius of the ring's bright line
+	var half := r * 0.12          # ring half-thickness
+	for y in d:
+		for x in d:
+			var dist := Vector2(float(x) - c, float(y) - c).length()
+			var a := clampf(1.0 - absf(dist - mid) / half, 0.0, 1.0)
+			if a <= 0.01:
+				continue
+			img.set_pixel(x, y, Color(1.0, 0.95, 0.7, a))
 	return ImageTexture.create_from_image(img)
 
 func _load_tex(path: String) -> Texture2D:

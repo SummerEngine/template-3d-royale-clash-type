@@ -29,8 +29,10 @@ func _ready() -> void:
 	await get_tree().create_timer(hit_delay).timeout
 	if is_instance_valid(_manager) and _manager.has_method("explode_damage"):
 		# Hit a bit past the telegraph ring so units overlapping the rim are actually
-		# caught (the center-based check made the red circle look oversold).
-		_manager.explode_damage(global_position, _radius + damage_radius_bonus, _damage, _team)
+		# caught (the center-based check made the red circle look oversold), plus a
+		# further +10% on the HIT radius only — the ring + arrow spread still use _radius,
+		# so this is invisible reach, not a bigger-looking circle.
+		_manager.explode_damage(global_position, (_radius + damage_radius_bonus) * 1.1, _damage, _team)
 	# Let the last arrows + ring finish, then clean up.
 	await get_tree().create_timer(0.6).timeout
 	if is_instance_valid(self):

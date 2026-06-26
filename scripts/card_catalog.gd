@@ -143,7 +143,7 @@ static func all() -> Array:
 			"glb": "res://models/giant/giant_walk.glb",
 			"script": "res://scripts/giant.gd",
 			"flavor": "A lumbering behemoth that ignores troops entirely and marches straight for your towers. Slow, but nearly unstoppable.",
-			"stats": [["Role", "Tank"], ["Health", "200"], ["Damage", "30"], ["Targets", "Buildings"], ["Move speed", "Slow"]],
+			"stats": [["Role", "Tank"], ["Health", "180"], ["Damage", "30"], ["Targets", "Buildings"], ["Move speed", "Slow"]],
 			"level_stats": ["Health", "Damage"],
 		},
 		{
@@ -158,7 +158,7 @@ static func all() -> Array:
 		},
 		{
 			"id": "builder", "name": "Builder", "unlock_cost": 180,
-			"texture": "res://ui/builder_button.png", "cost": 4.0, "scale": 1.3,
+			"texture": "res://ui/builder_button.png", "cost": 3.0, "scale": 1.3,
 			"glb": "res://models/dwarf/dwarf_walk.glb",
 			"script": "res://scripts/builder.gd",
 			"flavor": "Won't throw a punch. Plants elixir pumps to keep your war machine fed — protect him and your economy soars.",
@@ -179,7 +179,7 @@ static func all() -> Array:
 			# Freeze: a targeted SPELL that locks every enemy unit + building in the circle
 			# in a block of ice for a few seconds — they can't move, attack or animate.
 			"id": "freeze", "name": "Freeze",
-			"texture": "res://ui/freeze_button.png", "cost": 2.0, "scale": 1.0,
+			"texture": "res://ui/freeze_button.png", "cost": 1.0, "scale": 1.0,
 			"kind": "spell", "spell_type": "freeze", "radius": 3.5, "freeze_time": 4.5,
 			"flavor": "Encases every enemy troop and building in the circle in solid ice. Stop a push cold, then punish the helpless.",
 			"stats": [["Role", "Spell"], ["Effect", "Freeze"], ["Duration", "4.5s"], ["Radius", "3.5"], ["Aim", "Anywhere"]],
@@ -196,7 +196,7 @@ static func all() -> Array:
 			"glb": "res://models/cannon/cannon.glb",
 			"script": "res://scripts/archer_tower.gd",
 			"flavor": "A stout iron cannon that pounds the nearest enemy in range. It slowly rusts away on its own, so it only stands for a while — make it count.",
-			"stats": [["Role", "Building"], ["Health", "80"], ["Damage", "8 / shot"], ["Range", "10"], ["Decays", "2 hp/sec"]],
+			"stats": [["Role", "Building"], ["Health", "70"], ["Damage", "6 / shot"], ["Range", "10"], ["Decays", "3 hp/sec"]],
 			"level_stats": ["Health", "Damage"],
 		},
 	]

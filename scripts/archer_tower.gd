@@ -10,12 +10,12 @@ extends Node3D
 # Spawn contract (the building card path in battle_manager): setup(team, manager) is
 # called BEFORE add_child(); global_position is set by the spawner AFTER add_child().
 
-@export var max_hp: float = 80.0
-@export var decay_per_sec: float = 2.0     # passive rot — 80 / 2 = ~40s if never attacked
+@export var max_hp: float = 70.0
+@export var decay_per_sec: float = 3.0     # passive rot — 70 / 3 = ~23s if never attacked
 @export var radius: float = 1.6            # footprint push-out + targeting radius
 @export var visual_scale: float = 2.6      # the GLB imports ~1 unit; scale it up to building size
 @export var attack_range: float = 10.0     # horizontal range it can shoot within
-@export var shot_damage: float = 8.0       # damage per cannonball
+@export var shot_damage: float = 6.0       # damage per cannonball
 @export var fire_interval: float = 0.8     # seconds between shots
 @export var fade_time: float = 0.7         # crumble duration on death
 # Cannon aiming / muzzle (the GLB's barrel facing can't be known from code — tune).

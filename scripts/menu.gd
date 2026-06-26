@@ -506,8 +506,8 @@ func _add_title() -> void:
 	title.anchor_bottom = 0.37
 	title.offset_left = 0.0
 	title.offset_right = 0.0
-	title.offset_top = 0.0
-	title.offset_bottom = 0.0
+	title.offset_top = 60.0      # nudge the whole logo band down a touch
+	title.offset_bottom = 60.0
 	add_child(title)
 
 # Persistent player level + XP badge, top-left, in the wooden menu style. Reads the

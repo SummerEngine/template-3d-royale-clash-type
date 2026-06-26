@@ -30,6 +30,7 @@ const CARD_CATALOG := preload("res://scripts/card_catalog.gd")
 const PAUSE_MENU := preload("res://scripts/pause_menu.gd")
 const MATCH_TIMER := preload("res://scripts/match_timer.gd")
 const DEPLOY_HINT := preload("res://scripts/deploy_hint.gd")
+const MATCH_INTRO := preload("res://scripts/match_intro.gd")
 const ARROWS_SPELL := preload("res://scripts/arrows_spell.gd")
 const SKY_BOMB := preload("res://scripts/sky_bomb.gd")
 const FREEZE_SPELL := preload("res://scripts/freeze_spell.gd")
@@ -61,6 +62,27 @@ const FREEZE_SPELL := preload("res://scripts/freeze_spell.gd")
 @export var bomber_spawn_cost: float = 1.0       # elixir cost per bomber (cheap, fragile suicide unit)
 @export var enemy_bomber_chance: float = 0.12    # P(bomber) on an enemy purchase roll
 @export var enemy_giant_chance: float = 0.08     # P(giant) on an enemy purchase roll (builder gets the remainder)
+
+# --- Catalog-driven enemy AI (replaces the fixed barb/wiz/builder roll above) -----
+# The enemy banks to this before it acts, so EVERY card it owns (incl. the 4-cost
+# cannon) is affordable on a play — no rolling something it can't pay for.
+@export var enemy_gate_elixir: float = 4.0
+# DEBUG: while true the enemy only plays from ENEMY_DEBUG_DECK (spells + cannon) so we
+# can watch its spell-aiming and building-placement in isolation. Flip false to let it
+# play the full deck.
+@export var enemy_debug_mode: bool = false
+# Every card the enemy is allowed to play (card_catalog ids). Spells get aimed at the
+# player's densest troop cluster; buildings get placed on the enemy's own half.
+const ENEMY_FULL_DECK := ["barbarian", "wizard", "giant", "bomber", "builder", "arrows", "freeze", "archer_tower"]
+const ENEMY_DEBUG_DECK := ["arrows", "freeze", "archer_tower"]
+# Relative pick weights — each tick the enemy weighted-randomly chooses among the cards
+# it can both afford AND use right now. Tuned to lean on cheap troops, with spells/cannon
+# as occasional answers. As whole-deck percentages: barbarian 26%, wizard 20%, giant 12%,
+# bomber 12%, builder 8%, arrows 9%, freeze 6%, cannon 7%.
+const ENEMY_WEIGHTS := {
+	"barbarian": 26.0, "wizard": 20.0, "giant": 12.0, "bomber": 12.0,
+	"builder": 8.0, "arrows": 9.0, "freeze": 6.0, "archer_tower": 7.0,
+}
 # Sudden death: when the match clock hits 0, bombs rain from the sky and kill EVERYONE.
 @export var sd_bomb_interval: float = 1.6        # seconds between bomb drops (a mirrored pair each) — sparse rain
 @export var sd_bomb_field: float = 17.0          # half-extent of the square drop zone (centred, symmetric)
@@ -156,15 +178,14 @@ func _ready() -> void:
 	add_child(PAUSE_MENU.new())
 	# Opening nudge: "Drag units to the battlefield!" if the player stalls at the start.
 	add_child(DEPLOY_HINT.new())
-	SFX.play(self, "res://audio/gong", -2.0, 0.0)   # ceremonial gong to kick off the match
-	# Announcer "FIGHT!" a beat after the gong (non-blocking, so _ready continues).
-	get_tree().create_timer(0.4).timeout.connect(func() -> void:
-		if is_instance_valid(self):
-			SFX.play(self, "res://audio/announcer_fight", 2.0, 0.0, 0.64))
+	# Match-start "VS" intro splash. It owns the gong + announcer_fight timing so the
+	# audio lines up with the banners slamming in; non-blocking, frees itself.
+	add_child(MATCH_INTRO.new())
 
 	# Collapse the decorative arena walls + corner towers into MultiMesh batches
 	# (32 static draw calls -> 2). Purely visual; gameplay nodes are untouched.
 	_batch_static_arena()
+	_animate_moat()   # swap the flat moat material for a cheap GPU water shader (gentle ripples)
 
 	if _PERF_PROBE:
 		_setup_perf_probe()
@@ -314,6 +335,22 @@ func _make_builder(team: int, enemy_base: Node3D, spawn_pos: Vector3) -> void:
 # the editor) but are freed at runtime once the batch stands in for them. The
 # gameplay princess towers live at the scene ROOT (not under Arena), so the
 # "Tower_"/"Wall_" Arena-children scan never reaches them.
+# Swap the moat's flat material for the animated water shader (loaded by path so we
+# never touch the scene's resource UIDs). Pure-GPU ripples — no per-frame CPU cost.
+func _animate_moat() -> void:
+	var root := get_parent()
+	if root == null:
+		return
+	var moat := root.get_node_or_null("Moat")
+	if not (moat is MeshInstance3D):
+		return
+	var sh = load("res://shaders/moat_water.gdshader")
+	if sh == null:
+		return
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	(moat as MeshInstance3D).material_override = mat
+
 func _batch_static_arena() -> void:
 	var arena = get_parent().get_node_or_null("Arena")
 	if arena == null:
@@ -413,8 +450,11 @@ func get_nearest_enemy_structure(from_pos: Vector3, my_team: int) -> Node3D:
 # whose horizontal distance is within `radius`. Used by the Bomber's suicide attack.
 func explode_damage(center: Vector3, radius: float, amount: float, my_team: int) -> void:
 	var r2 := radius * radius
-	# Enemy units.
-	var enemies: Array = units[1 - my_team]
+	# Enemy units. Iterate a SNAPSHOT (.duplicate()): take_damage can kill a unit, which
+	# synchronously removes it from units[1-my_team] (notify_died -> erase). Looping the
+	# live array while it's edited makes the for-loop skip the next unit, so some units
+	# inside the blast were surviving. The copy keeps every target in the blast getting hit.
+	var enemies: Array = units[1 - my_team].duplicate()
 	for u in enemies:
 		if not is_instance_valid(u) or not u.alive:
 			continue
@@ -422,8 +462,8 @@ func explode_damage(center: Vector3, radius: float, amount: float, my_team: int)
 		var dz: float = u.global_position.z - center.z
 		if dx * dx + dz * dz <= r2:
 			u.take_damage(amount)
-	# Enemy structures (towers + pumps).
-	for pe in _pumps:
+	# Enemy structures (towers + pumps). Snapshot too, in case a death prunes _pumps.
+	for pe in _pumps.duplicate():
 		if int(pe["team"]) == my_team:
 			continue
 		var pn = pe["node"]
@@ -1059,31 +1099,141 @@ func _start_enemy_spawner() -> void:
 func _on_enemy_brain_tick() -> void:
 	if not (is_instance_valid(_enemy_base) and _enemy_base.alive):
 		return
-	if _enemy_elixir == null or _enemy_elixir.current < wizard_spawn_cost:
-		return   # bank to 3 (affords a barb or wizard); banks further for a 4-cost builder
-	# Pick a unit type — balanced for variety. Only spawn if the roll is actually
-	# affordable, so e.g. a 6-cost giant rolled at 3 just banks toward 6 instead of
-	# spawning for free. Thresholds are cumulative; builder gets whatever's left.
-	var r := randf()
-	var t_barb := enemy_barb_chance
-	var t_wiz := t_barb + enemy_wizard_chance
-	var t_bomber := t_wiz + enemy_bomber_chance
-	var t_giant := t_bomber + enemy_giant_chance
-	if r < t_barb:
-		if _enemy_elixir.spend(spawn_cost):
-			spawn_one(1, _enemy_base, _player_base)
-	elif r < t_wiz:
-		if _enemy_elixir.spend(wizard_spawn_cost):
-			spawn_one_wizard(1, _enemy_base, _player_base)
-	elif r < t_bomber:
-		if _enemy_elixir.spend(bomber_spawn_cost):
-			spawn_one_bomber(1, _enemy_base, _player_base)
-	elif r < t_giant:
-		if _enemy_elixir.spend(giant_spawn_cost):
-			spawn_one_giant(1, _enemy_base, _player_base)
+	if _enemy_elixir == null or _enemy_elixir.current < enemy_gate_elixir:
+		return   # bank to the gate so any card (incl. the 4-cost cannon) is affordable
+	# Weighted-random pick among the cards it can afford. Try the pick; if it isn't
+	# usable right now (a spell needs a target, a building needs a free spot), drop it
+	# and re-pick from the rest. If nothing qualifies, hold the elixir for next tick.
+	var pool: Array = []
+	for id in (ENEMY_DEBUG_DECK if enemy_debug_mode else ENEMY_FULL_DECK):
+		if float(CARD_CATALOG.by_id(str(id)).get("cost", 0.0)) <= _enemy_elixir.current:
+			pool.append(str(id))
+	while not pool.is_empty():
+		var pick := _weighted_pick(pool)
+		if _enemy_try_card(pick):
+			return
+		pool.erase(pick)
+
+# Weighted-random choice of one id from `pool`, using ENEMY_WEIGHTS (default 1.0).
+func _weighted_pick(pool: Array) -> String:
+	var total: float = 0.0
+	for id in pool:
+		total += float(ENEMY_WEIGHTS.get(id, 1.0))
+	var r := randf() * total
+	for id in pool:
+		r -= float(ENEMY_WEIGHTS.get(id, 1.0))
+		if r <= 0.0:
+			return str(id)
+	return str(pool[pool.size() - 1])
+
+# Try to play one card by id for the enemy (team 1). Returns true if it actually
+# spent elixir and committed something. Spells aim at the player's densest troop
+# cluster; buildings drop on the enemy's own half; units march from its base front.
+func _enemy_try_card(id: String) -> bool:
+	var def: Dictionary = CARD_CATALOG.by_id(id)
+	if def.is_empty():
+		return false
+	var cost: float = float(def.get("cost", 0.0))
+	if _enemy_elixir.current < cost:
+		return false
+	var kind := str(def.get("kind", ""))
+	if kind == "spell":
+		var radius: float = float(def.get("radius", 4.0))
+		var target = _enemy_spell_target(radius)
+		if target == null:
+			return false   # nothing worth hitting — try another card / wait
+		if not _enemy_elixir.spend(cost):
+			return false
+		if str(def.get("spell_type", "")) == "freeze":
+			cast_freeze(1, target, radius, float(def.get("freeze_time", 3.5)))
+		else:
+			cast_arrows(1, target, radius, float(def.get("damage", 30.0)))
+		return true
+	elif kind == "building":
+		var footprint: float = float(def.get("footprint", 1.6))
+		var spot = _enemy_building_spot(footprint)
+		if spot == null:
+			return false   # no free legal spot right now
+		if not _enemy_elixir.spend(cost):
+			return false
+		spawn_building_at(1, spot, load(def["glb"]), load(def["script"]), 1.0)
+		return true
 	else:
-		if _enemy_elixir.spend(builder_spawn_cost):
-			spawn_one_builder(1, _enemy_base, _player_base)
+		# Plain walking unit — march it out from the enemy base front like the squad does.
+		if not _enemy_elixir.spend(cost):
+			return false
+		spawn_one_typed_at(1, _front_spawn_pos(_enemy_base), load(def["glb"]), load(def["script"]), 1.0)
+		return true
+
+# Best AoE center for an enemy spell: the centroid of the densest cluster of LIVING
+# player (team-0) units within `radius`. Returns a Vector3, or null if there are no
+# player units to hit (so the enemy won't waste a spell on empty ground).
+func _enemy_spell_target(radius: float):
+	var targets: Array = units[0]
+	var best = null
+	var best_count: int = -1
+	for a in targets:
+		if not is_instance_valid(a) or not a.alive:
+			continue
+		var sum: Vector3 = a.global_position
+		var n: int = 1
+		for b in targets:
+			if a == b or not is_instance_valid(b) or not b.alive:
+				continue
+			var d: Vector3 = a.global_position - b.global_position
+			d.y = 0.0
+			if d.length() <= radius:
+				sum += b.global_position
+				n += 1
+		if n - 1 > best_count:
+			best_count = n - 1
+			best = sum / float(n)   # centroid of a + everyone caught in its circle
+	if best == null:
+		return null
+	return Vector3(best.x, 0.0, best.z)
+
+# A free, legal spot to drop a building on the ENEMY's own half: forward from its base
+# toward (but short of) the moat, biased laterally toward the lane the player is
+# pushing. Re-checks moat/arena bounds + structure overlap. Returns a Vector3 or null.
+func _enemy_building_spot(footprint: float):
+	if not is_instance_valid(_enemy_base):
+		return null
+	var base: Vector3 = _enemy_base.global_position
+	base.y = 0.0
+	var fwd: Vector3 = Vector3.ZERO - base
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var right := MOAT_T                       # lateral axis (runs along the moat / between lanes)
+	var center_fwd: float = (Vector3.ZERO - base).dot(fwd)   # forward distance from base to the moat
+	var lat_bias: float = _enemy_threat_lateral(right)        # defend the busiest lane
+	# Probe a handful of candidate spots and take the first that's legal + unoccupied.
+	for i in range(18):
+		var f: float = lerp(center_fwd * 0.45, center_fwd - 3.0, randf())   # mid-own-half .. just before the moat
+		var lat: float = clampf(lat_bias + randf_range(-5.0, 5.0), -9.0, 9.0)
+		var pos: Vector3 = base + fwd * f + right * lat
+		pos.y = 0.0
+		if absf(pos.x) > island_half_extent or absf(pos.z) > island_half_extent:
+			continue
+		if absf(pos.x) + absf(pos.z) > island_octagon_limit:
+			continue
+		if over_moat(pos, moat_half_width + 1.0):
+			continue   # keep it out of the water
+		if building_blocked(pos, footprint):
+			continue   # overlaps a base / tower / pump / another building
+		return pos
+	return null
+
+# Average lateral position (along `right`) of the living player units, so a defensive
+# building can be biased toward the lane they're attacking down. 0 if no units.
+func _enemy_threat_lateral(right: Vector3) -> float:
+	var sum: float = 0.0
+	var n: int = 0
+	for u in units[0]:
+		if not is_instance_valid(u) or not u.alive:
+			continue
+		sum += u.global_position.dot(right)
+		n += 1
+	return sum / float(n) if n > 0 else 0.0
 
 # A base was destroyed: its team loses, the other team wins. Show it once.
 func _on_base_destroyed(team: int) -> void:
