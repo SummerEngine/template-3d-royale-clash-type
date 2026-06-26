@@ -28,6 +28,9 @@ var _elixir = null                # the elixir model (res://scripts/elixir.gd); 
 var _fill: Control = null         # liquid fill node; we drive its anchor_top
 var _surface: ColorRect = null    # bright line riding the top of the liquid
 var _number_label: Label = null   # integer count drawn on the drop
+var _bar: Panel = null            # the glass bar (repositioned by set_bar_bottom)
+var _drop_box: Control = null     # the elixir drop container (kept centered on the bar)
+var _bar_bottom: float = BAR_BOTTOM   # px from the screen bottom to the bar; manager sets it above the cards
 var _was_full: bool = false
 const SFX := preload("res://scripts/sfx.gd")
 
@@ -46,6 +49,25 @@ var _shake_amp: float = 0.0
 # Called by the battle manager BEFORE add_child().
 func bind(elixir_node: Node) -> void:
 	_elixir = elixir_node
+
+
+# Reposition the whole bar to sit `px` pixels above the screen bottom. The manager
+# calls this once it knows the (resolution-dependent) card-row height, so the bar
+# always clears the cards on any aspect ratio instead of using a fixed offset.
+func set_bar_bottom(px: float) -> void:
+	_bar_bottom = px
+	if _bar != null:
+		_bar.offset_bottom = -px
+		_bar.offset_top = -px - BAR_H
+	if _drop_box != null:
+		var c := -(px + BAR_H * 0.5)
+		_drop_box.offset_top = c - DROP_SIZE * 0.5
+		_drop_box.offset_bottom = c + DROP_SIZE * 0.5
+	if _root != null and _root.has_node("DoubleLabel"):
+		var lbl := _root.get_node("DoubleLabel") as Control
+		var dtop := -(px + BAR_H + 54.0)
+		lbl.offset_top = dtop
+		lbl.offset_bottom = dtop + 48.0
 
 
 func _ready() -> void:
@@ -78,7 +100,7 @@ func show_double() -> void:
 	lbl.anchor_bottom = 1.0
 	lbl.offset_left = 0.0
 	lbl.offset_right = 0.0
-	var top := -(BAR_BOTTOM + BAR_H + 54.0)
+	var top := -(_bar_bottom + BAR_H + 54.0)
 	lbl.offset_top = top
 	lbl.offset_bottom = top + 48.0
 	_root.add_child(lbl)
@@ -181,8 +203,8 @@ func _build_bar(root: Control) -> Panel:
 	bar.anchor_bottom = 1.0
 	bar.offset_left = BAR_LEFT
 	bar.offset_right = -MARGIN
-	bar.offset_bottom = -BAR_BOTTOM
-	bar.offset_top = -BAR_BOTTOM - BAR_H
+	bar.offset_bottom = -_bar_bottom
+	bar.offset_top = -_bar_bottom - BAR_H
 
 	var glass := StyleBoxFlat.new()
 	glass.bg_color = COL_GLASS
@@ -277,6 +299,7 @@ func _build_bar(root: Control) -> Panel:
 	_red_flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bar.add_child(_red_flash)
 
+	_bar = bar
 	return bar
 
 
@@ -295,10 +318,11 @@ func _build_drop(root: Control, _bar: Panel) -> void:
 	drop_box.offset_left = dx
 	drop_box.offset_right = dx + DROP_SIZE
 	# Vertically: centered on the bar.
-	var bar_center := -(BAR_BOTTOM + BAR_H * 0.5)
+	var bar_center := -(_bar_bottom + BAR_H * 0.5)
 	drop_box.offset_top = bar_center - DROP_SIZE * 0.5
 	drop_box.offset_bottom = bar_center + DROP_SIZE * 0.5
 	root.add_child(drop_box)
+	_drop_box = drop_box
 
 
 	# Try to load the drop sprite; fall back gracefully so it's never blank.

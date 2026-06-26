@@ -27,13 +27,13 @@ func _ready() -> void:
 		var packed = load("res://models/fireball/fireball.glb")
 		var inst = packed.instantiate()
 		add_child(inst)
-		inst.scale = Vector3(0.5, 0.5, 0.5)
+		inst.scale = Vector3(0.9, 0.9, 0.9)   # bigger, beefier fireball
 		_visual = inst
 	else:
 		var mesh_inst := MeshInstance3D.new()
 		var sphere := SphereMesh.new()
-		sphere.radius = 0.25
-		sphere.height = 0.5
+		sphere.radius = 0.45
+		sphere.height = 0.9
 		mesh_inst.mesh = sphere
 
 		var mat := StandardMaterial3D.new()

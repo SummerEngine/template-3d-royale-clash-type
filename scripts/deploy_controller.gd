@@ -41,6 +41,14 @@ var _zone_sig: int = -1            # unlocked-lane signature the zone was last b
 var _last_pos: Vector3 = Vector3.ZERO
 var _spell: bool = false        # spell mode: free-aim a target reticle anywhere on the field
 var _spell_radius: float = 4.0
+var _place_range: float = 0.0   # if > 0 (e.g. archer tower), show an attack-range disc while placing
+var _range_ring: MeshInstance3D = null
+
+# Buildings can't be placed overlapping another structure. While placing one we test
+# the spot each frame and turn the ghost RED + reject the drop when it's blocked.
+var _building: bool = false
+var _footprint: float = 1.6     # the building's collision radius (overlap clearance)
+var _last_blocked: bool = false
 
 # --- Deploy buffer: a release that's just short parks a "pending" ghost that fires
 # the instant elixir fills. Starting another deploy cancels it (player changed mind).
@@ -51,6 +59,8 @@ var _pending_cost: float = 0.0
 var _pending_pos: Vector3 = Vector3.ZERO
 var _pending_spawn_fn: Callable = Callable()
 var _pending_card = null
+var _pending_building: bool = false   # re-checked for overlap when a buffered building fires
+var _pending_footprint: float = 1.6
 var _pending_tween: Tween = null
 
 func bind(manager, cam: Camera3D, player_base: Node3D, cam_pan) -> void:
@@ -70,6 +80,10 @@ func begin(_card, cost: float, unit_def: Dictionary) -> bool:
 	_cost = cost
 	_spell = unit_def.get("spell", false)
 	_spell_radius = unit_def.get("radius", 4.0)
+	_place_range = unit_def.get("range", 0.0)
+	_building = unit_def.get("building", false)
+	_footprint = unit_def.get("footprint", 1.6)
+	_last_blocked = false
 	_spawn_fn = unit_def.get("spawn_fn", Callable())
 	_active = true
 	_engaged = false
@@ -79,6 +93,8 @@ func begin(_card, cost: float, unit_def: Dictionary) -> bool:
 		_make_deploy_zone()   # show the legal drop area (units only; spells free-aim)
 	_last_pos = _line_center()
 	_update_ghost(_last_pos)
+	if _building:
+		_update_validity()   # red ghost from the first frame if the start spot is blocked
 	if _cam_pan != null and _cam_pan.has_method("set_active"):
 		_cam_pan.set_active(false)   # don't pan the camera mid-deploy
 	return true
@@ -95,7 +111,10 @@ func release(card) -> void:
 	elif _over_card(card):
 		do_deploy = false           # released back over the card -> cancel, no spend
 	if do_deploy:
-		if _manager.can_deploy(_cost):
+		if _building and _building_blocked(pos):
+			# Overlapping a structure — invalid spot. Reject, no spend (no buffer).
+			_reject(card)
+		elif _manager.can_deploy(_cost):
 			# Affordable now — deploy immediately.
 			var res: int = _manager.try_deploy(_cost, _spawn_fn, pos)
 			if res == 1 and card != null and card.has_method("success_pop"):
@@ -111,6 +130,16 @@ func release(card) -> void:
 				card.reject_wiggle()
 	_clear()
 
+func _building_blocked(pos: Vector3) -> bool:
+	return _manager != null and _manager.has_method("building_blocked") \
+		and _manager.building_blocked(pos, _footprint)
+
+func _reject(card) -> void:
+	if _manager != null and _manager.has_method("deploy_denied"):
+		_manager.deploy_denied()
+	if card != null and card.has_method("reject_wiggle"):
+		card.reject_wiggle()
+
 func _process(_delta: float) -> void:
 	if _pending:
 		_process_pending()
@@ -125,6 +154,35 @@ func _process(_delta: float) -> void:
 	# Keep the blue zone in sync if an enemy tower falls mid-drag (opens a new strip).
 	if not _spell and is_instance_valid(_zone) and _zone_unlock_sig() != _zone_sig:
 		_refresh_deploy_zone()
+	# Buildings: re-tint the ghost red/cyan as the spot becomes blocked/free.
+	if _building:
+		_update_validity()
+
+# Turn the building ghost (and its ring) RED while it overlaps a structure, cyan when
+# free. Only re-tints when the state flips, so it's cheap.
+func _update_validity() -> void:
+	var blocked := _building_blocked(_last_pos)
+	if blocked == _last_blocked and _ghost != null:
+		return
+	_last_blocked = blocked
+	var col: Color = Color(0.95, 0.28, 0.22) if blocked else ghost_tint
+	if is_instance_valid(_ghost):
+		_tint_ghost(_ghost, col)
+	if is_instance_valid(_ring):
+		var rm = _ring.material_override
+		if rm is StandardMaterial3D:
+			rm.albedo_color = Color(col.r, col.g, col.b, 0.75)
+
+func _tint_ghost(n: Node, col: Color) -> void:
+	if n is MeshInstance3D:
+		var mi := n as MeshInstance3D
+		if mi.mesh != null:
+			for i in mi.mesh.get_surface_count():
+				var m = mi.get_surface_override_material(i)
+				if m is StandardMaterial3D:
+					m.albedo_color = Color(col.r, col.g, col.b, ghost_alpha)
+	for c in n.get_children():
+		_tint_ghost(c, col)
 
 # --- Deploy buffer ---------------------------------------------------------
 # Park the active drag's ghost as a pending deploy: it fires automatically once
@@ -134,6 +192,10 @@ func _begin_pending(pos: Vector3, card) -> void:
 	if is_instance_valid(_zone):
 		_zone.queue_free()
 		_zone = null
+	if is_instance_valid(_range_ring):
+		_range_ring.queue_free()   # placement-only aid; not needed while a deploy waits
+		_range_ring = null
+	_place_range = 0.0
 	_pending = true
 	_pending_ghost = _ghost
 	_pending_ring = _ring
@@ -141,6 +203,8 @@ func _begin_pending(pos: Vector3, card) -> void:
 	_pending_pos = pos
 	_pending_spawn_fn = _spawn_fn
 	_pending_card = card
+	_pending_building = _building
+	_pending_footprint = _footprint
 	if is_instance_valid(_pending_ghost):
 		_pending_ghost.global_position = pos
 		var d := Vector3.ZERO - pos
@@ -174,6 +238,11 @@ func _process_pending() -> void:
 		_clear_pending()   # base dead / no economy — drop the buffered deploy
 		return
 	if short <= 0.0:
+		# A buffered building re-checks its spot: if a structure took it meanwhile, drop it
+		# (no overlap) instead of spawning.
+		if _pending_building and _manager.has_method("building_blocked") and _manager.building_blocked(_pending_pos, _pending_footprint):
+			_clear_pending()
+			return
 		var res: int = _manager.try_deploy(_pending_cost, _pending_spawn_fn, _pending_pos)
 		if res == 1 and _pending_card != null and is_instance_valid(_pending_card) and _pending_card.has_method("success_pop"):
 			_pending_card.success_pop()
@@ -327,6 +396,24 @@ func _make_ghost(unit_def: Dictionary) -> void:
 	_ring.material_override = rm
 	_manager.add_child(_ring)
 
+	# Buildings with an attack range (e.g. the archer tower) show a translucent disc
+	# of that radius while placing, so the player can cover the area they want.
+	if _place_range > 0.0:
+		_range_ring = MeshInstance3D.new()
+		var disc := CylinderMesh.new()
+		disc.top_radius = _place_range
+		disc.bottom_radius = _place_range
+		disc.height = 0.04
+		disc.radial_segments = 48
+		_range_ring.mesh = disc
+		var dm := StandardMaterial3D.new()
+		dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		dm.albedo_color = Color(0.45, 0.85, 1.0, 0.13)   # soft cyan range footprint
+		dm.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_range_ring.material_override = dm
+		_manager.add_child(_range_ring)
+
 # Translucent blue patch on the ground covering the legal unit-drop region: the
 # "own half up to the river" rectangle (deploy_forward_min..max deep, +/-lateral
 # wide), laid out in the base->center forward axis and the camera-right axis so it
@@ -438,21 +525,29 @@ func _update_ghost(pos: Vector3) -> void:
 			_ghost.rotation.y = atan2(d.x, d.z)   # face toward map center, like a spawned unit
 	if is_instance_valid(_ring):
 		_ring.global_position = pos + Vector3(0.0, 0.06, 0.0)
+	if is_instance_valid(_range_ring):
+		_range_ring.global_position = Vector3(pos.x, 0.04, pos.z)
 
 func _clear() -> void:
 	if is_instance_valid(_ghost):
 		_ghost.queue_free()
 	if is_instance_valid(_ring):
 		_ring.queue_free()
+	if is_instance_valid(_range_ring):
+		_range_ring.queue_free()
 	if is_instance_valid(_zone):
 		_zone.queue_free()
 	_ghost = null
 	_ring = null
+	_range_ring = null
+	_place_range = 0.0
 	_zone = null
 	_zone_sig = -1
 	_active = false
 	_engaged = false
 	_spell = false
+	_building = false
+	_last_blocked = false
 	_spawn_fn = Callable()
 	if _cam_pan != null and _cam_pan.has_method("set_active"):
 		_cam_pan.set_active(true)

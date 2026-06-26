@@ -11,7 +11,7 @@ var _manager = null     # BattleManager — untyped for cross-script duck typing
 var _team: int = 0
 var _radius: float = 3.5
 var _freeze_time: float = 3.5
-var _frozen: Array = []   # [{node, anim, speed, ice}]
+var _frozen: Array = []   # the units this cast froze (each decremented on our timer)
 
 # Called by battle_manager.cast_freeze BEFORE add_child (so _ready has the values).
 func setup(manager, team: int, radius: float, freeze_time: float) -> void:
@@ -40,35 +40,79 @@ func _freeze_targets() -> void:
 func _freeze(n) -> void:
 	if not is_instance_valid(n):
 		return
-	n.set_meta("frozen", true)         # manager skips frozen units in separation/clamp
-	n.set_process(false)               # stop its AI / movement / attacks
+	# Per-unit freeze count: overlapping freezes stack, so a unit only thaws when the
+	# LAST freeze on it expires (re-freezing extends instead of thawing early).
+	var count := int(n.get_meta("freeze_count", 0))
+	n.set_meta("freeze_count", count + 1)
+	_frozen.append(n)
+	if count > 0:
+		return   # already frozen by an earlier cast — our timer just holds it longer
+	# First freeze on this unit: actually lock it down + encase it once.
+	n.set_meta("frozen", true)          # manager skips frozen units in separation/clamp
+	n.set_process(false)                # stop its AI / movement / attacks
 	n.set_physics_process(false)
 	var ap := _find_anim(n)
-	var prev_speed := 1.0
 	if ap != null:
-		prev_speed = ap.speed_scale
-		ap.speed_scale = 0.0           # freeze the pose mid-stride
+		n.set_meta("freeze_anim_speed", ap.speed_scale)
+		ap.speed_scale = 0.0            # freeze the pose mid-stride
 	var ice := _make_ice_block()
 	n.add_child(ice)
 	ice.scale = Vector3.ONE * 0.5
 	ice.create_tween().tween_property(ice, "scale", Vector3.ONE, 0.16) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	_frozen.append({"node": n, "anim": ap, "speed": prev_speed, "ice": ice})
+	n.set_meta("freeze_ice", ice)
 
 func _unfreeze_all() -> void:
-	for f in _frozen:
-		var n = f["node"]
-		if is_instance_valid(n):
-			n.remove_meta("frozen")
-			n.set_process(true)
-			n.set_physics_process(true)
-			var ap = f["anim"]
-			if ap != null and is_instance_valid(ap):
-				ap.speed_scale = float(f["speed"]) if float(f["speed"]) > 0.0 else 1.0
-		var ice = f["ice"]
-		if is_instance_valid(ice):
+	for n in _frozen:
+		if not is_instance_valid(n):
+			continue
+		var count := int(n.get_meta("freeze_count", 1)) - 1
+		if count > 0:
+			n.set_meta("freeze_count", count)   # still held frozen by a later cast
+			continue
+		# Last freeze on this unit expired — thaw it: restore AI, anim, shatter the ice.
+		n.remove_meta("freeze_count")
+		n.remove_meta("frozen")
+		n.set_process(true)
+		n.set_physics_process(true)
+		var ap := _find_anim(n)
+		if ap != null:
+			var sp := float(n.get_meta("freeze_anim_speed", 1.0))
+			ap.speed_scale = sp if sp > 0.0 else 1.0
+		var ice = n.get_meta("freeze_ice", null)
+		if ice != null and is_instance_valid(ice):
 			_shatter(ice)
+		n.remove_meta("freeze_anim_speed")
+		n.remove_meta("freeze_ice")
 	_frozen.clear()
+
+# Called by the battle manager the instant a unit dies. If it was frozen, restore its
+# animation speed (so the death clip can actually play instead of being stuck at
+# speed 0), drop its ice block, and clear the freeze metas — so a unit doesn't have to
+# wait out the freeze to die; it thaws, plays its death anim, and disappears.
+static func thaw_dead(n) -> void:
+	if n == null or not is_instance_valid(n) or not n.has_meta("frozen"):
+		return
+	var ap := _anim_of(n)
+	if ap != null:
+		var sp := float(n.get_meta("freeze_anim_speed", 1.0))
+		ap.speed_scale = sp if sp > 0.0 else 1.0
+	var ice = n.get_meta("freeze_ice", null)
+	if ice != null and is_instance_valid(ice):
+		ice.queue_free()
+	for k in ["frozen", "freeze_count", "freeze_anim_speed", "freeze_ice"]:
+		if n.has_meta(k):
+			n.remove_meta(k)
+
+# Recursive find of a node's AnimationPlayer (static twin of _find_anim, for thaw_dead).
+static func _anim_of(node) -> AnimationPlayer:
+	for c in node.get_children():
+		if c is AnimationPlayer:
+			return c
+		var found := _anim_of(c)
+		if found != null:
+			return found
+	return null
 
 # A translucent cyan ice block encasing a unit. Added as a child so it inherits the
 # unit's scale (giants get a big block, skeletons a small one). Pops on, shatters off.
@@ -78,16 +122,11 @@ func _make_ice_block() -> MeshInstance3D:
 	box.size = Vector3(1.15, 1.7, 1.15)
 	mi.mesh = box
 	mi.position = Vector3(0.0, 0.85, 0.0)
+	# Plain lit + alpha only — matches the team-tint overlay shader (already compiled),
+	# so encasing a unit doesn't trigger a shader-compile hitch on cast.
 	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.6, 0.85, 1.0, 0.42)
+	m.albedo_color = Color(0.62, 0.86, 1.0, 0.46)
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.rim_enabled = true
-	m.rim = 0.6
-	m.metallic = 0.2
-	m.roughness = 0.1
-	m.emission_enabled = true
-	m.emission = Color(0.4, 0.7, 1.0)
-	m.emission_energy_multiplier = 0.25
 	mi.material_override = m
 	return mi
 
@@ -127,8 +166,6 @@ func _telegraph() -> void:
 	var dm := StandardMaterial3D.new()
 	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	dm.albedo_color = Color(0.6, 0.85, 1.0, 0.12)
-	dm.rim_enabled = true
-	dm.rim = 0.5
 	dm.cull_mode = BaseMaterial3D.CULL_DISABLED
 	dome.material_override = dm
 	add_child(dome)
@@ -165,10 +202,7 @@ func _burst_fx() -> void:
 		bm.size = Vector3(0.18, 0.18, 0.18)
 		shard.mesh = bm
 		var sm := StandardMaterial3D.new()
-		sm.albedo_color = Color(0.7, 0.9, 1.0)
-		sm.emission_enabled = true
-		sm.emission = Color(0.5, 0.8, 1.0)
-		sm.emission_energy_multiplier = 0.4
+		sm.albedo_color = Color(0.78, 0.92, 1.0)
 		shard.material_override = sm
 		add_child(shard)
 		shard.position = Vector3(0.0, 0.4, 0.0)

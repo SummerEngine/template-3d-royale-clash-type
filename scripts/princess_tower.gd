@@ -30,7 +30,7 @@ func _ready() -> void:
 	_rest_scale = scale.x          # uniform scale baked into the .tscn transform
 	_manager = _find_manager()
 	if _manager != null and _manager.has_method("register_pump"):
-		_manager.register_pump(self, radius, team)   # same channel as elixir pumps: targetable + immovable
+		_manager.register_pump(self, radius, team, false)   # passive: targetable + immovable, but not a Freeze target (doesn't "do stuff")
 	_apply_team_tint()
 	_add_health_bar()
 

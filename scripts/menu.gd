@@ -285,6 +285,9 @@ func _setup_pager() -> void:
 	# Keep the coin badge fixed and on top of the pager, so it serves both pages.
 	if _coin_badge != null:
 		move_child(_coin_badge, get_child_count() - 1)
+	# Build the Army page now (deferred, off the critical path) so the first swipe to it
+	# is a smooth slide instead of a construction hitch. It's kept alive afterwards.
+	call_deferred("_ensure_army")
 
 func _ensure_army() -> void:
 	if _army_page != null or _pager == null:
@@ -298,10 +301,8 @@ func _ensure_army() -> void:
 	_army = LOADOUT.new()
 	_army.on_back = Callable(self, "_slide_to_menu")   # Back / swipe-right returns to menu
 	_army.on_gold_changed = Callable(self, "_refresh_coin_badge")   # unlock spend -> refresh shared badge
-	_army.tree_exited.connect(_resume_theme)
 	_army_page.add_child(_army)
-	if _theme != null:
-		_theme.stream_paused = true   # army page plays its own calm theme
+	_army.set_active(false)   # built off-screen ahead of time — keep its theme idle until shown
 
 func _destroy_army() -> void:
 	if _army_page != null:
@@ -319,13 +320,20 @@ func _slide_to_menu() -> void:
 func _animate_pager_to(target_x: float) -> void:
 	if _pager == null:
 		return
+	var to_army := not is_equal_approx(target_x, 0.0)
+	# Menu theme off / army camp theme on while the army page is up (and vice versa).
+	if _theme != null:
+		_theme.stream_paused = to_army
+	if _army != null and _army.has_method("set_active"):
+		_army.set_active(to_army)
+	if to_army and _army != null and _army.has_method("_update_gold"):
+		_army._update_gold()   # cheap gold resync (no collection rebuild) so it never goes stale
 	_sliding = true
 	var t := create_tween()
 	t.tween_property(_pager, "position:x", target_x, 0.26).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	t.tween_callback(func() -> void:
 		_sliding = false
-		if is_equal_approx(target_x, 0.0):
-			_destroy_army()   # back at the menu: tear the army page down
+		if is_equal_approx(target_x, 0.0):   # back at the menu: resync the shared coin badge
 			# Re-read gold: an unlock bought on the army screen spends coins, so the
 			# menu badge must resync or it'd show a stale value until the next chest.
 			if _coin_label != null and is_instance_valid(_coin_label):

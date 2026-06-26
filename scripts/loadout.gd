@@ -19,6 +19,7 @@ var _tiles: Dictionary = {}    # id -> collection tile Control (for in-deck dimm
 var _wrap: HFlowContainer = null   # the collection container (rebuilt on unlock)
 var _gold_label: Label = null      # top-right gold counter
 var _click: AudioStreamPlayer = null
+var _music: AudioStreamPlayer = null   # camp theme; gated by set_active (page is kept alive)
 var on_back: Callable = Callable()   # set by the menu pager; called instead of self-freeing
 var on_gold_changed: Callable = Callable()   # set by the menu; called when an unlock spends gold
 
@@ -81,16 +82,24 @@ func _ready() -> void:
 	# screen exists and stops automatically when the node frees on Back.
 	var theme_path := "res://audio/army_theme.mp3"
 	if ResourceLoader.exists(theme_path):
-		var music := AudioStreamPlayer.new()
+		_music = AudioStreamPlayer.new()
 		var ms = load(theme_path)
 		if ms is AudioStreamMP3:
 			ms.loop = true
-		music.stream = ms
-		music.bus = "Music"
-		music.volume_db = -5.0
-		add_child(music)
-		music.play()
+		_music.stream = ms
+		_music.bus = "Music"
+		_music.volume_db = -5.0
+		add_child(_music)
+		_music.play()
+		_music.stream_paused = true   # built ahead of time; the menu unpauses it on show
 	_build_ui()
+
+
+# The menu pager calls this on slide: the Army page is built ahead of time and kept,
+# so its camp theme is gated to play only while the page is actually on screen.
+func set_active(active: bool) -> void:
+	if _music != null:
+		_music.stream_paused = not active
 
 
 func _build_ui() -> void:
@@ -255,6 +264,25 @@ func _tile_style(in_deck: bool) -> StyleBoxFlat:
 
 
 func _build_slots() -> void:
+	# A little wooden frame grouping the 3 deck slots. Added FIRST so it sits behind them.
+	var slots_w := 3.0 * SLOT_SIZE + 2.0 * 30.0   # 3 slots + 2 separations
+	var pad := 22.0
+	var frame := Panel.new()
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.anchor_left = 0.5
+	frame.anchor_right = 0.5
+	frame.offset_left = -slots_w * 0.5 - pad
+	frame.offset_right = slots_w * 0.5 + pad
+	frame.offset_top = 680.0 - pad
+	frame.offset_bottom = 680.0 + SLOT_SIZE + pad
+	var fsb := StyleBoxFlat.new()
+	fsb.bg_color = Color(0.10, 0.07, 0.04, 0.5)   # subtle dark-wood fill
+	fsb.set_corner_radius_all(24)
+	fsb.set_border_width_all(4)
+	fsb.border_color = ACCENT   # gold border to match the menu
+	frame.add_theme_stylebox_override("panel", fsb)
+	add_child(frame)
+
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 30)

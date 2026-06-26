@@ -456,6 +456,8 @@ func enemies_in_radius(center: Vector3, radius: float, my_team: int) -> Array:
 	for pe in _pumps:
 		if int(pe["team"]) == my_team:
 			continue
+		if not bool(pe.get("active", true)):
+			continue   # passive structures (princess towers) aren't freeze targets
 		var pn = pe["node"]
 		if not is_instance_valid(pn) or not pn.alive:
 			continue
@@ -467,6 +469,7 @@ func enemies_in_radius(center: Vector3, radius: float, my_team: int) -> Array:
 
 # A unit reports its death; remove it from whichever team array holds it.
 func notify_died(unit: Node) -> void:
+	FREEZE_SPELL.thaw_dead(unit)   # if frozen, thaw it so its death anim plays + the ice drops
 	for team_list in units:
 		if team_list.has(unit):
 			team_list.erase(unit)
@@ -475,8 +478,10 @@ func notify_died(unit: Node) -> void:
 # A builder finished a pump; track it as an immovable obstacle (units get pushed
 # out of its radius in _physics_process, like the team bases) AND as a targetable
 # enemy structure (get_nearest_enemy scans these by team).
-func register_pump(pump: Node3D, r: float, team: int) -> void:
-	_pumps.append({ "node": pump, "r": r, "team": team })
+func register_pump(pump: Node3D, r: float, team: int, active: bool = true) -> void:
+	# active = the building "does stuff" (shoots / generates). Passive structures like
+	# princess towers register with active=false so spells like Freeze skip them.
+	_pumps.append({ "node": pump, "r": r, "team": team, "active": active })
 
 # Route a unit moving from `from` toward `to` so it crosses the moat only at a
 # bridge: same side of the water -> straight; crossing -> head to the nearer bridge
@@ -737,7 +742,7 @@ func _build_spawn_cards() -> void:
 			var bglb = load(def["glb"])
 			var bscript = load(def["script"])
 			var bmult := CARD_CATALOG.level_multiplier(str(def["id"]))
-			udef = { "glb": bglb, "scale": def["scale"], "spawn_fn": spawn_building_at.bind(bglb, bscript, bmult) }
+			udef = { "glb": bglb, "scale": def["scale"], "range": def.get("range", 0.0), "building": true, "footprint": def.get("footprint", 1.6), "spawn_fn": spawn_building_at.bind(bglb, bscript, bmult) }
 		else:
 			var glb = load(def["glb"])
 			var unit_script = load(def["script"])
@@ -745,6 +750,13 @@ func _build_spawn_cards() -> void:
 			var lvl_mult := CARD_CATALOG.level_multiplier(str(def["id"]))
 			udef = { "glb": glb, "scale": def["scale"], "spawn_fn": spawn_one_typed_at.bind(glb, unit_script, lvl_mult) }
 		card.setup(card_w, tex, cost, int(cost), drop_tex, _elixir, deploy, udef)
+
+	# Park the elixir bar just above the card row. Cards are sized from screen WIDTH,
+	# so on wide/short screens they're tall — without this the fixed-offset bar ends up
+	# hidden behind them. 36.0 = the row's lift in _place_card; +14 is a small gap.
+	if count > 0 and _elixir_ui != null and _elixir_ui.has_method("set_bar_bottom"):
+		var card_top := spawn_button_margin + 36.0 + card_w
+		_elixir_ui.set_bar_bottom(card_top + 14.0)
 
 # Center the row of `count` cards (each `card_w` wide) along the bottom edge.
 # Anchored to the screen's bottom-center; total row width = viewport - 2*margin,
@@ -794,6 +806,26 @@ func deploy_shortfall(cost: float) -> float:
 	if not (is_instance_valid(_player_base) and _player_base.alive) or _elixir == null:
 		return 9999.0
 	return cost - float(_elixir.current)
+
+# Would a building of `footprint` radius dropped at `pos` overlap an existing
+# structure? Used by the deploy controller to forbid placing a tower inside another
+# building / tower / pump / base (and turn the placement ghost red).
+func building_blocked(pos: Vector3, footprint: float) -> bool:
+	for b in [_player_base, _enemy_base]:
+		if is_instance_valid(b):
+			var to: Vector3 = b.global_position - pos
+			to.y = 0.0
+			if to.length() < float(b.radius) + footprint:
+				return true
+	for pe in _pumps:
+		var pn = pe["node"]
+		if not is_instance_valid(pn):
+			continue
+		var to: Vector3 = pn.global_position - pos
+		to.y = 0.0
+		if to.length() < float(pe["r"]) + footprint:
+			return true
+	return false
 
 # Reject feedback when a deploy can't start or can't commit (meter shake + buzz).
 func deploy_denied() -> void:

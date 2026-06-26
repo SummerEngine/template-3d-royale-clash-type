@@ -179,21 +179,23 @@ static func all() -> Array:
 			# Freeze: a targeted SPELL that locks every enemy unit + building in the circle
 			# in a block of ice for a few seconds — they can't move, attack or animate.
 			"id": "freeze", "name": "Freeze",
-			"texture": "res://ui/freeze_button.png", "cost": 4.0, "scale": 1.0,
-			"kind": "spell", "spell_type": "freeze", "radius": 3.5, "freeze_time": 3.5,
+			"texture": "res://ui/freeze_button.png", "cost": 2.0, "scale": 1.0,
+			"kind": "spell", "spell_type": "freeze", "radius": 3.5, "freeze_time": 4.5,
 			"flavor": "Encases every enemy troop and building in the circle in solid ice. Stop a push cold, then punish the helpless.",
-			"stats": [["Role", "Spell"], ["Effect", "Freeze"], ["Duration", "3.5s"], ["Radius", "3.5"], ["Aim", "Anywhere"]],
+			"stats": [["Role", "Spell"], ["Effect", "Freeze"], ["Duration", "4.5s"], ["Radius", "3.5"], ["Aim", "Anywhere"]],
 		},
 		{
-			# Archer Tower: a placeable wooden building (kind "building"). Stands still,
-			# shoots the nearest enemy in range, and slowly rots away.
-			"id": "archer_tower", "name": "Archer Tower", "unlock_cost": 150,
-			"texture": "res://ui/archer_tower_button.png", "cost": 4.0, "scale": 2.6,
+			# Cannon: a placeable defensive building (kind "building"). Stands still,
+			# fires at the nearest enemy in range, and slowly rots away. (id stays
+			# "archer_tower" so saved unlocks/loadouts keep working.)
+			"id": "archer_tower", "name": "Cannon", "unlock_cost": 150,
+			"texture": "res://ui/cannon_button.png", "cost": 4.0, "scale": 2.6,
 			"kind": "building",
-			"glb": "res://models/archer_tower/archer_tower.glb",
+			"range": 10.0,   # attack range — shown as a circle while placing (matches archer_tower.gd)
+			"glb": "res://models/cannon/cannon.glb",
 			"script": "res://scripts/archer_tower.gd",
-			"flavor": "A wooden lookout that rains arrows on nearby enemies. It slowly rots on its own, so it only stands for a while — make it count.",
-			"stats": [["Role", "Building"], ["Health", "80"], ["Damage", "8 / shot"], ["Range", "7"], ["Decays", "2 hp/sec"]],
+			"flavor": "A stout iron cannon that pounds the nearest enemy in range. It slowly rusts away on its own, so it only stands for a while — make it count.",
+			"stats": [["Role", "Building"], ["Health", "80"], ["Damage", "8 / shot"], ["Range", "10"], ["Decays", "2 hp/sec"]],
 			"level_stats": ["Health", "Damage"],
 		},
 	]

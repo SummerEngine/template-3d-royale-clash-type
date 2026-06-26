@@ -4,7 +4,7 @@ extends CanvasLayer
 ## Pauses with the game automatically (default process_mode follows the SceneTree
 ## pause), so it doesn't tick while the pause menu is up.
 
-@export var start_seconds: float = 120.0   # 2 minutes
+@export var start_seconds: float = 90.0   # 1:30
 @export var warn_seconds: float = 10.0      # turn red + pulse under this
 
 signal finished   # emitted once the moment it reaches 0:00
