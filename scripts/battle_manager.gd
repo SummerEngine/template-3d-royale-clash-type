@@ -731,7 +731,7 @@ func _build_spawn_cards() -> void:
 			# anywhere; the spawn fn casts the spell (radius/params bound in).
 			var sr: float = def.get("radius", 4.0)
 			if str(def.get("spell_type", "")) == "freeze":
-				var ft: float = def.get("freeze_time", 3.5)
+				var ft: float = def.get("freeze_time", 3.5) * CARD_CATALOG.level_multiplier(str(def["id"]))
 				udef = { "spell": true, "radius": sr, "spawn_fn": cast_freeze.bind(sr, ft) }
 			else:
 				var sd: float = def.get("damage", 30.0) * CARD_CATALOG.level_multiplier(str(def["id"]))
@@ -1154,19 +1154,31 @@ func _show_win_banner(winner: int) -> void:
 # A princess tower fell — count it as a crown for the other side (decides time-up).
 func on_tower_destroyed(team: int) -> void:
 	_towers_lost[team] += 1
+	# In sudden death, the first tower that makes the crown counts unequal ends it.
+	if _sudden_death:
+		_decide_by_crowns()
+
+# End the match for whoever has destroyed MORE enemy towers. Returns true if it
+# decided a winner; false on a tie (equal crowns).
+func _decide_by_crowns() -> bool:
+	if _winner_shown:
+		return true
+	var player_crowns: int = _towers_lost[1]   # team-1 towers WE knocked down
+	var enemy_crowns: int = _towers_lost[0]    # team-0 towers THEY knocked down
+	if player_crowns > enemy_crowns:
+		_on_base_destroyed(1)    # loser = team 1 -> player (team 0) wins
+		return true
+	elif enemy_crowns > player_crowns:
+		_on_base_destroyed(0)    # loser = team 0 -> enemy (team 1) wins
+		return true
+	return false
 
 # The 2:00 clock ran out. Clash-Royale rule: most enemy towers destroyed wins
 # outright; only an equal crown count falls through to sudden death.
 func _on_time_up() -> void:
 	if _winner_shown or _sudden_death:
 		return
-	var player_crowns: int = _towers_lost[1]   # team-1 towers WE knocked down
-	var enemy_crowns: int = _towers_lost[0]    # team-0 towers THEY knocked down
-	if player_crowns > enemy_crowns:
-		_on_base_destroyed(1)    # loser = team 1 -> player (team 0) wins
-	elif enemy_crowns > player_crowns:
-		_on_base_destroyed(0)    # loser = team 0 -> enemy (team 1) wins
-	else:
+	if not _decide_by_crowns():
 		_begin_sudden_death()    # dead even on crowns -> bombs decide it
 
 func _begin_sudden_death() -> void:

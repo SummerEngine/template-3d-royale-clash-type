@@ -183,6 +183,7 @@ static func all() -> Array:
 			"kind": "spell", "spell_type": "freeze", "radius": 3.5, "freeze_time": 4.5,
 			"flavor": "Encases every enemy troop and building in the circle in solid ice. Stop a push cold, then punish the helpless.",
 			"stats": [["Role", "Spell"], ["Effect", "Freeze"], ["Duration", "4.5s"], ["Radius", "3.5"], ["Aim", "Anywhere"]],
+			"level_stats": ["Duration"],
 		},
 		{
 			# Cannon: a placeable defensive building (kind "building"). Stands still,
