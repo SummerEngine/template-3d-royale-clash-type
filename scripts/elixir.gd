@@ -3,7 +3,7 @@ extends Node
 
 @export var max_elixir: float = 10.0
 @export var start_elixir: float = 3.0
-@export var regen_per_sec: float = 0.33333333  # gain 1 elixir every 3 seconds
+@export var regen_per_sec: float = 0.5  # gain 1 elixir every 2 seconds
 
 var current: float
 

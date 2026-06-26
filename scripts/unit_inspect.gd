@@ -23,7 +23,10 @@ var _click: AudioStreamPlayer = null
 var _chime: AudioStreamPlayer = null     # triumphant unlock-purchase sound
 var _denied: AudioStreamPlayer = null    # can't-afford buzz (reuses the in-match one)
 var _unlock_btn: Button = null           # only built for locked cards
-var on_unlocked: Callable = Callable()   # loadout refresh, called after a successful buy
+var _upgrade_btn: Button = null          # only built for unlocked cards
+var _level_lbl: Label = null             # "Level N (+X%)" line, unlocked cards only
+var _scalable_rows: Array = []           # {node:Label, base:String} stat rows that scale with level
+var on_unlocked: Callable = Callable()   # loadout refresh, called after a buy/upgrade
 
 func setup(def: Dictionary) -> void:
 	_def = def
@@ -129,10 +132,26 @@ func _build_card() -> void:
 	cost_lbl.add_theme_font_size_override("font_size", 26)
 	col.add_child(cost_lbl)
 
+	# Level line (gold) for already-unlocked cards — shows level + current stat bonus.
+	var cid := str(_def.get("id", ""))
+	if not CATALOG.is_locked(cid):
+		_level_lbl = Label.new()
+		_level_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_level_lbl.add_theme_color_override("font_color", GOLD)
+		_level_lbl.add_theme_color_override("font_outline_color", Color(0.2, 0.12, 0.02))
+		_level_lbl.add_theme_constant_override("outline_size", 3)
+		_level_lbl.add_theme_font_size_override("font_size", 26)
+		col.add_child(_level_lbl)
+		_refresh_level_label(cid)
+
 	col.add_child(_rule())
 
-	# Stat rows: "Label .... value", left/right justified across the card width.
+	# Stat rows: "Label .... value", left/right justified across the card width. Rows
+	# whose label is in this card's "level_stats" scale with its level (and turn gold
+	# when boosted); they're recorded so an upgrade can re-render them live.
 	var stats: Array = _def.get("stats", [])
+	var level_stats: Array = _def.get("level_stats", [])
+	var lvl_mult := CATALOG.level_multiplier(cid)
 	for pair in stats:
 		if typeof(pair) != TYPE_ARRAY or pair.size() < 2:
 			continue
@@ -143,13 +162,17 @@ func _build_card() -> void:
 		l.add_theme_color_override("font_color", Color(0.42, 0.30, 0.16))
 		l.add_theme_font_size_override("font_size", 28)
 		row.add_child(l)
+		var scales: bool = level_stats.has(str(pair[0]))
+		var base_val := str(pair[1])
 		var v := Label.new()
-		v.text = str(pair[1])
+		v.text = _scale_stat_text(base_val, lvl_mult) if scales else base_val
 		v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		v.add_theme_color_override("font_color", BROWN)
 		v.add_theme_font_size_override("font_size", 28)
 		row.add_child(v)
 		col.add_child(row)
+		if scales:
+			_scalable_rows.append({ "node": v, "base": base_val })
 
 	col.add_child(_rule())
 
@@ -180,19 +203,19 @@ func _build_card() -> void:
 		_unlock_btn.pressed.connect(_on_unlock)
 		col.add_child(_unlock_btn)
 	else:
-		# Close button (wood plate, gold border).
-		var close := Button.new()
-		close.text = "CLOSE"
-		close.custom_minimum_size = Vector2(0, 76)
-		close.add_theme_font_size_override("font_size", 30)
-		close.add_theme_color_override("font_color", PARCH)
-		close.add_theme_color_override("font_color_pressed", Color(0.8, 0.72, 0.55))
-		close.add_theme_color_override("font_color_hover", Color(1, 0.95, 0.8))
-		close.add_theme_stylebox_override("normal", _btn_style(Color(0.34, 0.20, 0.10)))
-		close.add_theme_stylebox_override("hover", _btn_style(Color(0.40, 0.24, 0.12)))
-		close.add_theme_stylebox_override("pressed", _btn_style(Color(0.26, 0.15, 0.07)))
-		close.pressed.connect(_close)
-		col.add_child(close)
+		# Unlocked card: a gold UPGRADE button (spends gold to raise its level). No Close
+		# button — tapping anywhere outside the card dismisses it (the backdrop).
+		_upgrade_btn = Button.new()
+		_upgrade_btn.custom_minimum_size = Vector2(0, 84)
+		_upgrade_btn.add_theme_font_size_override("font_size", 30)
+		_upgrade_btn.add_theme_color_override("font_color", BROWN)
+		_upgrade_btn.add_theme_color_override("font_color_hover", Color(0.18, 0.09, 0.03))
+		_upgrade_btn.add_theme_stylebox_override("normal", _btn_style(GOLD))
+		_upgrade_btn.add_theme_stylebox_override("hover", _btn_style(Color(0.96, 0.76, 0.36)))
+		_upgrade_btn.add_theme_stylebox_override("pressed", _btn_style(Color(0.74, 0.54, 0.18)))
+		_upgrade_btn.pressed.connect(_on_upgrade)
+		col.add_child(_upgrade_btn)
+		_refresh_upgrade_label(card_id)
 
 	# Pop in from slightly small + transparent.
 	_card.pivot_offset = Vector2(CARD_W * 0.5, CARD_H * 0.5)
@@ -214,7 +237,7 @@ func _on_unlock() -> void:
 		if _unlock_btn != null:
 			_unlock_btn.text = "OWNED"
 			_unlock_btn.disabled = true
-		_show_unlocked_banner()
+		_show_banner("UNLOCKED!", GOLD)
 		if on_unlocked.is_valid():
 			on_unlocked.call()
 	else:
@@ -226,14 +249,76 @@ func _on_unlock() -> void:
 		_show_cant_afford()
 
 
-# Big gold "UNLOCKED!" that pops in over the card, holds, then fades and frees.
-func _show_unlocked_banner() -> void:
+# Spend gold to raise this card's level. Success: chime + "LEVEL N!" banner, the
+# button + level line update, and the army gold badge refreshes. Fail: denied buzz +
+# "Not enough gold!" popup.
+func _on_upgrade() -> void:
+	var card_id := str(_def.get("id", ""))
+	var new_lvl := CATALOG.try_upgrade(card_id)
+	if new_lvl > 0:
+		if _chime != null and _chime.stream != null:
+			_chime.play()
+		_show_banner("LEVEL %d!" % new_lvl, GOLD)
+		_refresh_level_label(card_id)
+		_refresh_upgrade_label(card_id)
+		_refresh_stats(card_id)
+		if on_unlocked.is_valid():
+			on_unlocked.call()   # refresh the army gold badge
+	else:
+		if _denied != null and _denied.stream != null:
+			_denied.play()
+		_show_cant_afford()
+
+
+func _refresh_level_label(id: String) -> void:
+	if _level_lbl == null:
+		return
+	var lvl := CATALOG.get_level(id)
+	var bonus := int(round((CATALOG.level_multiplier(id) - 1.0) * 100.0))
+	if bonus > 0:
+		var labels: Array = _def.get("level_stats", [])
+		var what := ", ".join(PackedStringArray(labels)) if not labels.is_empty() else "stats"
+		_level_lbl.text = "Level %d   (+%d%% %s)" % [lvl, bonus, what]
+	else:
+		_level_lbl.text = "Level %d" % lvl
+
+
+func _refresh_upgrade_label(id: String) -> void:
+	if _upgrade_btn == null:
+		return
+	_upgrade_btn.text = "Upgrade to Lvl %d  (%d gold)" % [CATALOG.get_level(id) + 1, CATALOG.upgrade_cost(id)]
+
+
+# Scale the leading number in a stat value, preserving any suffix (" (AoE)", " / shot").
+func _scale_stat_text(val: String, mult: float) -> String:
+	if mult <= 1.0001:
+		return val
+	var i := 0
+	while i < val.length() and ((val[i] >= "0" and val[i] <= "9") or val[i] == "."):
+		i += 1
+	if i == 0:
+		return val
+	var num := float(val.substr(0, i)) * mult
+	return ("%d" % int(round(num))) + val.substr(i)   # always a whole number
+
+
+# Re-render the scalable stat rows (and recolor them gold) after an upgrade.
+func _refresh_stats(id: String) -> void:
+	var mult := CATALOG.level_multiplier(id)
+	for r in _scalable_rows:
+		var v: Label = r["node"]
+		if is_instance_valid(v):
+			v.text = _scale_stat_text(str(r["base"]), mult)
+
+
+# Big banner text that pops in over the card, holds, then fades and frees.
+func _show_banner(text: String, col: Color) -> void:
 	var banner := Label.new()
-	banner.text = "UNLOCKED!"
+	banner.text = text
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	banner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	banner.add_theme_font_size_override("font_size", 78)
-	banner.add_theme_color_override("font_color", GOLD)
+	banner.add_theme_color_override("font_color", col)
 	banner.add_theme_color_override("font_outline_color", Color.BLACK)
 	banner.add_theme_constant_override("outline_size", 9)
 	banner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

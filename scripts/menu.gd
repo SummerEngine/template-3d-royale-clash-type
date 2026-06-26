@@ -57,7 +57,7 @@ var _page_w: float = 0.0
 var _sliding: bool = false
 var _swiping: bool = false
 var _swipe_accum: float = 0.0   # horizontal travel since press; engages past the dead zone
-const SWIPE_DEADZONE := 16.0     # px of horizontal drag before a swipe engages
+const SWIPE_DEADZONE := 24.0     # px of horizontal drag before a swipe engages (above the card drag-start distance, so pulling a card never starts a swipe)
 
 func _ready() -> void:
 	# Demo session reset (once per app launch): relock builder/bomber + refill gold,
@@ -337,21 +337,30 @@ func _animate_pager_to(target_x: float) -> void:
 func _input(event: InputEvent) -> void:
 	if _pager == null or _sliding or _loading or _chest_popup != null:
 		return
-	if get_viewport().gui_is_dragging():
-		return   # don't fight a card drag-and-drop on the army screen
+	# Press: start a fresh gesture.
 	if (event is InputEventScreenTouch and event.pressed) \
 			or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
-		_swipe_accum = 0.0   # fresh gesture
-	elif event is InputEventScreenDrag:
-		_swipe_drag(event.relative.x)
-	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
-		_swipe_drag(event.relative.x)
-	elif (event is InputEventScreenTouch and not event.pressed) \
+		_swipe_accum = 0.0
+		_swiping = false
+		return
+	# Release: ALWAYS settle the pager (even mid card-drag) so it can't be left offset.
+	if (event is InputEventScreenTouch and not event.pressed) \
 			or (event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
 		if _swiping:
 			_swipe_release()
 		else:
 			_swipe_accum = 0.0
+		return
+	# Motion: a card drag-and-drop takes priority — if one is active, abandon the swipe
+	# and snap the pager back so a card-pull can never leave the menu nudged over.
+	if get_viewport().gui_is_dragging():
+		if _swiping:
+			_swipe_release()
+		return
+	if event is InputEventScreenDrag:
+		_swipe_drag(event.relative.x)
+	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+		_swipe_drag(event.relative.x)
 
 func _swipe_drag(dx: float) -> void:
 	if not _swiping:

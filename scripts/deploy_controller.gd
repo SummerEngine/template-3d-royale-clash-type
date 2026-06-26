@@ -22,6 +22,7 @@ extends Node
 @export var ghost_alpha: float = 0.5
 @export var ghost_tint: Color = Color(0.45, 0.85, 1.0)   # cyan deploy hologram
 @export var island_octagon_limit: float = 30.0   # |x|+|z| bound so placement stays inside the arena
+@export var buffer_elixir: float = 1.0   # deploy buffer: if a release is this many elixir short, queue it and spawn the instant elixir fills
 
 var _manager = null
 var _cam: Camera3D = null
@@ -35,9 +36,22 @@ var _cost: float = 0.0
 var _spawn_fn: Callable = Callable()
 var _ghost: Node3D = null
 var _ring: MeshInstance3D = null
+var _zone: Node3D = null           # container for the blue legal-drop patches
+var _zone_sig: int = -1            # unlocked-lane signature the zone was last built for
 var _last_pos: Vector3 = Vector3.ZERO
 var _spell: bool = false        # spell mode: free-aim a target reticle anywhere on the field
 var _spell_radius: float = 4.0
+
+# --- Deploy buffer: a release that's just short parks a "pending" ghost that fires
+# the instant elixir fills. Starting another deploy cancels it (player changed mind).
+var _pending: bool = false
+var _pending_ghost: Node3D = null
+var _pending_ring: MeshInstance3D = null
+var _pending_cost: float = 0.0
+var _pending_pos: Vector3 = Vector3.ZERO
+var _pending_spawn_fn: Callable = Callable()
+var _pending_card = null
+var _pending_tween: Tween = null
 
 func bind(manager, cam: Camera3D, player_base: Node3D, cam_pan) -> void:
 	_manager = manager
@@ -52,6 +66,7 @@ func bind(manager, cam: Camera3D, player_base: Node3D, cam_pan) -> void:
 func begin(_card, cost: float, unit_def: Dictionary) -> bool:
 	if _active or _manager == null or _cam == null:
 		return false
+	_clear_pending()   # starting a new placement = changed your mind; drop the buffered ghost
 	_cost = cost
 	_spell = unit_def.get("spell", false)
 	_spell_radius = unit_def.get("radius", 4.0)
@@ -60,6 +75,8 @@ func begin(_card, cost: float, unit_def: Dictionary) -> bool:
 	_engaged = false
 	_press_mouse = _mouse()
 	_make_ghost(unit_def)
+	if not _spell:
+		_make_deploy_zone()   # show the legal drop area (units only; spells free-aim)
 	_last_pos = _line_center()
 	_update_ghost(_last_pos)
 	if _cam_pan != null and _cam_pan.has_method("set_active"):
@@ -78,14 +95,25 @@ func release(card) -> void:
 	elif _over_card(card):
 		do_deploy = false           # released back over the card -> cancel, no spend
 	if do_deploy:
-		var res: int = _manager.try_deploy(_cost, _spawn_fn, pos)
-		if res == 1 and card != null and card.has_method("success_pop"):
-			card.success_pop()
-		elif res == 2 and card != null and card.has_method("reject_wiggle"):
-			card.reject_wiggle()
+		if _manager.can_deploy(_cost):
+			# Affordable now — deploy immediately.
+			var res: int = _manager.try_deploy(_cost, _spawn_fn, pos)
+			if res == 1 and card != null and card.has_method("success_pop"):
+				card.success_pop()
+		elif _manager.deploy_shortfall(_cost) <= buffer_elixir:
+			# Just short — BUFFER it: park the ghost and fire the moment elixir fills.
+			_begin_pending(pos, card)
+			return   # keep the ghost (now the pending indicator); don't _clear() it
+		else:
+			# Too short — reject (meter shake + buzz).
+			var res: int = _manager.try_deploy(_cost, _spawn_fn, pos)
+			if res == 2 and card != null and card.has_method("reject_wiggle"):
+				card.reject_wiggle()
 	_clear()
 
 func _process(_delta: float) -> void:
+	if _pending:
+		_process_pending()
 	if not _active:
 		return
 	var m := _mouse()
@@ -94,6 +122,76 @@ func _process(_delta: float) -> void:
 	if _engaged or _spell:   # spells follow the cursor from the first frame (free aim)
 		_last_pos = _compute_pos(m)
 		_update_ghost(_last_pos)
+	# Keep the blue zone in sync if an enemy tower falls mid-drag (opens a new strip).
+	if not _spell and is_instance_valid(_zone) and _zone_unlock_sig() != _zone_sig:
+		_refresh_deploy_zone()
+
+# --- Deploy buffer ---------------------------------------------------------
+# Park the active drag's ghost as a pending deploy: it fires automatically once
+# elixir reaches the cost. Reuses the live ghost/ring; the drop-zone patch is dropped.
+func _begin_pending(pos: Vector3, card) -> void:
+	_clear_pending()                  # only one buffered deploy at a time
+	if is_instance_valid(_zone):
+		_zone.queue_free()
+		_zone = null
+	_pending = true
+	_pending_ghost = _ghost
+	_pending_ring = _ring
+	_pending_cost = _cost
+	_pending_pos = pos
+	_pending_spawn_fn = _spawn_fn
+	_pending_card = card
+	if is_instance_valid(_pending_ghost):
+		_pending_ghost.global_position = pos
+		var d := Vector3.ZERO - pos
+		d.y = 0.0
+		if d.length() > 0.01:
+			_pending_ghost.rotation.y = atan2(d.x, d.z)
+	if is_instance_valid(_pending_ring):
+		_pending_ring.global_position = pos + Vector3(0.0, 0.06, 0.0)
+		var rm = _pending_ring.material_override
+		if rm is StandardMaterial3D:
+			rm.albedo_color = Color(1.0, 0.78, 0.22, 0.85)   # amber = waiting for elixir
+			_pending_tween = create_tween().set_loops()
+			_pending_tween.tween_property(rm, "albedo_color:a", 0.35, 0.4)
+			_pending_tween.tween_property(rm, "albedo_color:a", 0.85, 0.4)
+	# Detach from the active drag state WITHOUT freeing the now-pending visuals.
+	_ghost = null
+	_ring = null
+	_active = false
+	_engaged = false
+	_spell = false
+	_spawn_fn = Callable()
+	if _cam_pan != null and _cam_pan.has_method("set_active"):
+		_cam_pan.set_active(true)
+
+func _process_pending() -> void:
+	if _manager == null:
+		_clear_pending()
+		return
+	var short: float = _manager.deploy_shortfall(_pending_cost)
+	if short >= 900.0:
+		_clear_pending()   # base dead / no economy — drop the buffered deploy
+		return
+	if short <= 0.0:
+		var res: int = _manager.try_deploy(_pending_cost, _pending_spawn_fn, _pending_pos)
+		if res == 1 and _pending_card != null and is_instance_valid(_pending_card) and _pending_card.has_method("success_pop"):
+			_pending_card.success_pop()
+		_clear_pending()
+
+func _clear_pending() -> void:
+	if _pending_tween != null and _pending_tween.is_valid():
+		_pending_tween.kill()
+	_pending_tween = null
+	if is_instance_valid(_pending_ghost):
+		_pending_ghost.queue_free()
+	if is_instance_valid(_pending_ring):
+		_pending_ring.queue_free()
+	_pending_ghost = null
+	_pending_ring = null
+	_pending_card = null
+	_pending_spawn_fn = Callable()
+	_pending = false
 
 # --- Placement geometry ----------------------------------------------------
 # Center of the deploy line: a fixed distance in front of the player base toward
@@ -229,6 +327,94 @@ func _make_ghost(unit_def: Dictionary) -> void:
 	_ring.material_override = rm
 	_manager.add_child(_ring)
 
+# Translucent blue patch on the ground covering the legal unit-drop region: the
+# "own half up to the river" rectangle (deploy_forward_min..max deep, +/-lateral
+# wide), laid out in the base->center forward axis and the camera-right axis so it
+# lines up with how the cursor is clamped in _compute_pos. Static for the whole
+# drag; the cursor ghost moves within it. (The octagon corner-clip isn't drawn —
+# the rectangle slightly overhangs the far corners, which is close enough as a hint.)
+func _make_deploy_zone() -> void:
+	if not is_instance_valid(_player_base) or _manager == null:
+		return
+	_zone = Node3D.new()
+	_manager.add_child(_zone)
+	_zone_sig = -1
+	_refresh_deploy_zone()
+
+# Which enemy lanes are currently unlocked, as a bitmask (1 = left half open, 2 =
+# right half open). Each destroyed enemy princess tower opens its lane — the same
+# rule _compute_pos uses to actually clamp drops. The zone rebuilds whenever this
+# changes, so the blue area grows the instant a tower falls.
+func _zone_unlock_sig() -> int:
+	if _manager == null or not is_instance_valid(_player_base) or not _manager.has_method("destroyed_enemy_tower_positions"):
+		return 0
+	var base := _player_base.global_position
+	var right := _right_axis()
+	var sig := 0
+	for tpos in _manager.destroyed_enemy_tower_positions():
+		if (tpos - base).dot(right) >= 0.0:
+			sig |= 2   # right lane
+		else:
+			sig |= 1   # left lane
+	return sig
+
+# (Re)build the blue patches: the always-legal own-half rectangle, plus any
+# unlocked enemy strip past the moat. Called on begin and whenever a tower falls.
+func _refresh_deploy_zone() -> void:
+	if not is_instance_valid(_zone) or not is_instance_valid(_player_base):
+		return
+	for c in _zone.get_children():
+		c.queue_free()
+	var base := _player_base.global_position
+	base.y = 0.0
+	var fwd := _forward_axis()
+	var right := _right_axis()
+	# Own half, up to the river — always available.
+	_add_zone_patch(base, fwd, right, deploy_forward_min, deploy_forward_max, -lateral_half_width, lateral_half_width)
+	# Unlocked strip(s) past the moat, on whichever lane(s) lost a tower.
+	var sig := _zone_unlock_sig()
+	if sig != 0:
+		var center_fwd := (Vector3.ZERO - base).dot(fwd)
+		var strip_lo := center_fwd + enemy_strip_gap
+		var strip_hi := strip_lo + enemy_strip_depth
+		var lat_lo := 0.0
+		var lat_hi := 0.0
+		if sig & 1:
+			lat_lo = -lateral_half_width   # left half open
+		if sig & 2:
+			lat_hi = lateral_half_width    # right half open
+		_add_zone_patch(base, fwd, right, strip_lo, strip_hi, lat_lo, lat_hi)
+	_zone_sig = sig
+
+# One flat blue rectangle on the ground, given a forward [f_lo,f_hi] x lateral
+# [l_lo,l_hi] span in the deploy frame (forward = base->center, right = camera-right).
+func _add_zone_patch(base: Vector3, fwd: Vector3, right: Vector3, f_lo: float, f_hi: float, l_lo: float, l_hi: float) -> void:
+	var depth := f_hi - f_lo
+	var width := l_hi - l_lo
+	if depth <= 0.0 or width <= 0.0:
+		return
+	var center := base + fwd * ((f_lo + f_hi) * 0.5) + right * ((l_lo + l_hi) * 0.5)
+	center.y = 0.04   # just above the ground, like the deploy ring
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(width, depth)   # local X = lateral (right), local Z = depth (forward)
+	var patch := MeshInstance3D.new()
+	patch.mesh = plane
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(0.3, 0.6, 1.0, 0.22)   # soft blue deploy zone
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	patch.material_override = m
+	_zone.add_child(patch)
+	# Orient so local X -> right, local Z -> forward, flat on the ground.
+	var b := Basis()
+	b.x = right
+	b.y = Vector3.UP
+	b.z = right.cross(Vector3.UP)
+	if b.z.dot(fwd) < 0.0:
+		b.z = -b.z
+	patch.global_transform = Transform3D(b, center)
+
 # Replace every mesh surface with a flat translucent tint -> a clean hologram silhouette.
 func _ghostify(n: Node) -> void:
 	if n is MeshInstance3D:
@@ -258,8 +444,12 @@ func _clear() -> void:
 		_ghost.queue_free()
 	if is_instance_valid(_ring):
 		_ring.queue_free()
+	if is_instance_valid(_zone):
+		_zone.queue_free()
 	_ghost = null
 	_ring = null
+	_zone = null
+	_zone_sig = -1
 	_active = false
 	_engaged = false
 	_spell = false

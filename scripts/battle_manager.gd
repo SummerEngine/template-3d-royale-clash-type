@@ -32,6 +32,7 @@ const MATCH_TIMER := preload("res://scripts/match_timer.gd")
 const DEPLOY_HINT := preload("res://scripts/deploy_hint.gd")
 const ARROWS_SPELL := preload("res://scripts/arrows_spell.gd")
 const SKY_BOMB := preload("res://scripts/sky_bomb.gd")
+const FREEZE_SPELL := preload("res://scripts/freeze_spell.gd")
 
 @export var player_base_path: NodePath
 @export var enemy_base_path: NodePath
@@ -81,6 +82,7 @@ var _player_base   # HouseBase — untyped for cross-script duck typing
 var _enemy_base    # HouseBase — untyped for cross-script duck typing
 var _winner_shown: bool = false
 var _sudden_death: bool = false   # true once the clock ran out and bombs started falling
+var _towers_lost := [0, 0]        # _towers_lost[team] = princess towers that team has LOST (= the other side's crowns)
 var _elixir = null   # player elixir resource model (res://scripts/elixir.gd); untyped for duck typing
 var _elixir_ui = null   # elixir HUD (res://scripts/elixir_ui.gd); untyped for duck typing
 var _enemy_elixir = null   # enemy's HIDDEN elixir economy — same model, no HUD; fed by enemy pumps
@@ -128,9 +130,9 @@ func _ready() -> void:
 	# House health readouts: a floating bar over each house plus the fixed HUD.
 	_setup_house_ui()
 
-	# Battle countdown clock, top-center (2:00 -> 0:00). At zero it triggers sudden death.
+	# Battle countdown clock, top-center (2:00 -> 0:00). At zero, crowns decide the winner.
 	var mt = MATCH_TIMER.new()
-	mt.finished.connect(_begin_sudden_death)
+	mt.finished.connect(_on_time_up)
 	add_child(mt)
 
 	# Subtle swipe-to-pan camera (drags a little, stays where you leave it).
@@ -439,6 +441,30 @@ func explode_damage(center: Vector3, radius: float, amount: float, my_team: int)
 		if bdx * bdx + bdz * bdz <= r2:
 			eb.take_damage(amount)
 
+# Every enemy UNIT + STRUCTURE (towers/pumps) inside the circle, for area effects like
+# Freeze. Excludes the King base (no point freezing it). team = caster.
+func enemies_in_radius(center: Vector3, radius: float, my_team: int) -> Array:
+	var out: Array = []
+	var r2 := radius * radius
+	for u in units[1 - my_team]:
+		if not is_instance_valid(u) or not u.alive:
+			continue
+		var dx: float = u.global_position.x - center.x
+		var dz: float = u.global_position.z - center.z
+		if dx * dx + dz * dz <= r2:
+			out.append(u)
+	for pe in _pumps:
+		if int(pe["team"]) == my_team:
+			continue
+		var pn = pe["node"]
+		if not is_instance_valid(pn) or not pn.alive:
+			continue
+		var pdx: float = pn.global_position.x - center.x
+		var pdz: float = pn.global_position.z - center.z
+		if pdx * pdx + pdz * pdz <= r2:
+			out.append(pn)
+	return out
+
 # A unit reports its death; remove it from whichever team array holds it.
 func notify_died(unit: Node) -> void:
 	for team_list in units:
@@ -517,8 +543,8 @@ func _physics_process(_delta: float) -> void:
 	var all: Array = []
 	for team_list in units:
 		for u in team_list:
-			if is_instance_valid(u) and u.alive and not u.get("_detonating"):
-				all.append(u)
+			if is_instance_valid(u) and u.alive and not u.get("_detonating") and not u.get_meta("frozen", false):
+				all.append(u)   # frozen units are excluded too — they hold rock-still
 
 	# Soft collision: for each unique pair, if they overlap horizontally push
 	# them apart by a fraction of the overlap (separation_strength).
@@ -697,14 +723,27 @@ func _build_spawn_cards() -> void:
 		var udef: Dictionary
 		if str(def.get("kind", "")) == "spell":
 			# Spell card: no unit ghost. The deploy controller aims a target reticle
-			# anywhere; the spawn fn casts the spell (radius/damage bound in).
+			# anywhere; the spawn fn casts the spell (radius/params bound in).
 			var sr: float = def.get("radius", 4.0)
-			var sd: float = def.get("damage", 30.0)
-			udef = { "spell": true, "radius": sr, "spawn_fn": cast_arrows.bind(sr, sd) }
+			if str(def.get("spell_type", "")) == "freeze":
+				var ft: float = def.get("freeze_time", 3.5)
+				udef = { "spell": true, "radius": sr, "spawn_fn": cast_freeze.bind(sr, ft) }
+			else:
+				var sd: float = def.get("damage", 30.0) * CARD_CATALOG.level_multiplier(str(def["id"]))
+				udef = { "spell": true, "radius": sr, "spawn_fn": cast_arrows.bind(sr, sd) }
+		elif str(def.get("kind", "")) == "building":
+			# Building card: a static placeable structure (not a walking unit). Same glb
+			# ghost as a unit, but its spawn fn stands a building at the deploy spot.
+			var bglb = load(def["glb"])
+			var bscript = load(def["script"])
+			var bmult := CARD_CATALOG.level_multiplier(str(def["id"]))
+			udef = { "glb": bglb, "scale": def["scale"], "spawn_fn": spawn_building_at.bind(bglb, bscript, bmult) }
 		else:
 			var glb = load(def["glb"])
 			var unit_script = load(def["script"])
-			udef = { "glb": glb, "scale": def["scale"], "spawn_fn": spawn_one_typed_at.bind(glb, unit_script) }
+			# This card's persistent level scales the HP/damage of every unit it spawns.
+			var lvl_mult := CARD_CATALOG.level_multiplier(str(def["id"]))
+			udef = { "glb": glb, "scale": def["scale"], "spawn_fn": spawn_one_typed_at.bind(glb, unit_script, lvl_mult) }
 		card.setup(card_w, tex, cost, int(cost), drop_tex, _elixir, deploy, udef)
 
 # Center the row of `count` cards (each `card_w` wide) along the bottom edge.
@@ -748,6 +787,14 @@ func can_deploy(cost: float) -> bool:
 	return is_instance_valid(_player_base) and _player_base.alive \
 		and _elixir != null and _elixir.can_afford(cost)
 
+# How much elixir short a deploy of `cost` is right now (<=0 means affordable). Used
+# by the deploy buffer: a small shortfall is queued and spawned once elixir fills.
+# Returns a large sentinel when no deploy is possible at all (base dead / no economy).
+func deploy_shortfall(cost: float) -> float:
+	if not (is_instance_valid(_player_base) and _player_base.alive) or _elixir == null:
+		return 9999.0
+	return cost - float(_elixir.current)
+
 # Reject feedback when a deploy can't start or can't commit (meter shake + buzz).
 func deploy_denied() -> void:
 	_play(_sfx_denied)
@@ -781,6 +828,17 @@ func cast_arrows(team: int, pos: Vector3, radius: float, damage: float) -> void:
 		host = self
 	host.add_child(fx)
 
+# Cast the Freeze spell at `pos`: freezes every enemy unit + structure in radius for
+# `freeze_time` seconds. radius/duration are bound by the spell card. team = caster.
+func cast_freeze(team: int, pos: Vector3, radius: float, freeze_time: float) -> void:
+	var fx = FREEZE_SPELL.new()
+	fx.setup(self, team, radius, freeze_time)
+	fx.position = Vector3(pos.x, 0.0, pos.z)
+	var host := get_parent()
+	if host == null:
+		host = self
+	host.add_child(fx)
+
 # Positional spawns used by drag-to-deploy (team picks the matching enemy base).
 func _enemy_base_for(team: int) -> Node3D:
 	return _enemy_base if team == 0 else _player_base
@@ -796,16 +854,43 @@ func spawn_one_builder_at(team: int, pos: Vector3) -> void:
 
 # Generic positional spawn used by catalog-driven hotbar cards: the card binds its
 # own glb + script, so any number of card types route through this one path.
-func spawn_one_typed_at(team: int, pos: Vector3, glb, unit_script) -> void:
-	_make_typed(team, _enemy_base_for(team), pos, glb, unit_script)
+func spawn_one_typed_at(team: int, pos: Vector3, glb, unit_script, mult: float = 1.0) -> void:
+	_make_typed(team, _enemy_base_for(team), pos, glb, unit_script, mult)
 
-func _make_typed(team: int, enemy_base: Node3D, spawn_pos: Vector3, glb, unit_script) -> void:
+func _make_typed(team: int, enemy_base: Node3D, spawn_pos: Vector3, glb, unit_script, mult: float = 1.0) -> void:
 	var u = glb.instantiate()
 	u.set_script(unit_script)
 	u.setup(team, self, enemy_base)
 	add_child(u)
 	u.global_position = spawn_pos
+	_apply_level_mult(u, mult)
 	units[team].append(u)
+
+# A placeable building (catalog kind "building"): instantiate its glb + script and
+# stand it still at the deploy spot. Its own _ready registers it as a pump (targetable
+# + immovable), so it is NOT added to units[] — buildings aren't pushed by separation.
+func spawn_building_at(team: int, pos: Vector3, glb, build_script, mult: float = 1.0) -> void:
+	var b = glb.instantiate()
+	b.set_script(build_script)
+	b.setup(team, self)
+	add_child(b)
+	b.global_position = Vector3(pos.x, 0.0, pos.z)
+	_apply_level_mult(b, mult)
+
+# Scale a freshly-spawned unit/building's stats by its card level multiplier. Runs
+# AFTER add_child (so the node's _ready already set hp = max_hp). Guarded get/set so
+# it harmlessly skips any property a given unit type doesn't have.
+func _apply_level_mult(u, mult: float) -> void:
+	if mult <= 1.0001:
+		return
+	var mh = u.get("max_hp")
+	if typeof(mh) == TYPE_FLOAT or typeof(mh) == TYPE_INT:
+		u.set("max_hp", float(mh) * mult)
+		u.set("hp", float(mh) * mult)
+	for dprop in ["damage", "arrow_damage", "explosion_damage"]:
+		var dv = u.get(dprop)
+		if typeof(dv) == TYPE_FLOAT or typeof(dv) == TYPE_INT:
+			u.set(dprop, float(dv) * mult)
 
 # --- SFX players -----------------------------------------------------------
 func _setup_audio() -> void:
@@ -1034,6 +1119,24 @@ func _show_win_banner(winner: int) -> void:
 # Sudden death — the clock ran out. Rain bombs that kill EVERYONE until a King
 # falls, which ends the match through the normal destroyed -> win flow.
 # ===========================================================================
+# A princess tower fell — count it as a crown for the other side (decides time-up).
+func on_tower_destroyed(team: int) -> void:
+	_towers_lost[team] += 1
+
+# The 2:00 clock ran out. Clash-Royale rule: most enemy towers destroyed wins
+# outright; only an equal crown count falls through to sudden death.
+func _on_time_up() -> void:
+	if _winner_shown or _sudden_death:
+		return
+	var player_crowns: int = _towers_lost[1]   # team-1 towers WE knocked down
+	var enemy_crowns: int = _towers_lost[0]    # team-0 towers THEY knocked down
+	if player_crowns > enemy_crowns:
+		_on_base_destroyed(1)    # loser = team 1 -> player (team 0) wins
+	elif enemy_crowns > player_crowns:
+		_on_base_destroyed(0)    # loser = team 0 -> enemy (team 1) wins
+	else:
+		_begin_sudden_death()    # dead even on crowns -> bombs decide it
+
 func _begin_sudden_death() -> void:
 	if _sudden_death or _winner_shown:
 		return

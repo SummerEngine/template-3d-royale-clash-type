@@ -15,11 +15,12 @@ const COL_GLOSS   := Color(1.0, 1.0, 1.0)      # near-white highlight
 const COL_GLASS   := Color(0.10, 0.08, 0.16, 0.55)
 const COL_BORDER  := Color(0.55, 0.40, 0.70, 0.9)
 
-# --- Layout ----------------------------------------------------------------
-const MARGIN      := 24.0
-const TUBE_W      := 64.0
-const TUBE_H      := 300.0
-const DROP_SIZE   := 84.0
+# --- Layout (horizontal bar, just above the card row) ----------------------
+const MARGIN      := 28.0
+const BAR_H       := 40.0        # bar thickness
+const BAR_BOTTOM  := 236.0       # gap from the screen bottom up to the bar (clears the cards)
+const BAR_LEFT    := 100.0       # bar starts here; the elixir drop sits in the gap to its left
+const DROP_SIZE   := 66.0
 const SEGMENTS    := 10                          # 10 elixir = 10 segments
 
 # --- Runtime references ----------------------------------------------------
@@ -70,17 +71,16 @@ func show_double() -> void:
 	lbl.add_theme_color_override("font_color", COL_BRIGHT)   # elixir purple
 	lbl.add_theme_color_override("font_outline_color", Color(0.05, 0.0, 0.12))
 	lbl.add_theme_constant_override("outline_size", 6)
-	# Centred over the tube, sitting just above the elixir drop (bottom-left anchored).
+	# Centred across the bar, sitting just above it.
 	lbl.anchor_left = 0.0
-	lbl.anchor_right = 0.0
+	lbl.anchor_right = 1.0
 	lbl.anchor_top = 1.0
 	lbl.anchor_bottom = 1.0
-	var cx := MARGIN + TUBE_W * 0.5
-	lbl.offset_left = cx - 50.0
-	lbl.offset_right = cx + 50.0
-	var drop_top := -(MARGIN + TUBE_H) - DROP_SIZE * 0.55
-	lbl.offset_top = drop_top - 56.0
-	lbl.offset_bottom = drop_top - 4.0
+	lbl.offset_left = 0.0
+	lbl.offset_right = 0.0
+	var top := -(BAR_BOTTOM + BAR_H + 54.0)
+	lbl.offset_top = top
+	lbl.offset_bottom = top + 48.0
 	_root.add_child(lbl)
 
 
@@ -142,20 +142,20 @@ func _apply_ratio(ratio: float) -> void:
 	_set_fill_ratio(ratio)
 
 
-# Drive the liquid height: fill is anchored to the bottom and grows up by
-# moving its top anchor. anchor_top = 1.0 - ratio means full at ratio = 1.
+# Drive the liquid width: fill is anchored to the LEFT and grows right by moving
+# its right anchor. anchor_right = ratio means full at ratio = 1.
 func _set_fill_ratio(ratio: float) -> void:
 	if _fill != null:
-		_fill.anchor_top = 1.0 - ratio
-		_fill.offset_top = 0.0
-		_fill.offset_bottom = 0.0
+		_fill.anchor_right = ratio
+		_fill.offset_left = 0.0
+		_fill.offset_right = 0.0
 
 
 # ===========================================================================
 # UI construction
 # ===========================================================================
 func _build_ui() -> void:
-	# Root control pinned to the whole screen; children pin to bottom-left.
+	# Root control pinned to the whole screen; children pin to the bottom.
 	var root := Control.new()
 	root.name = "ElixirRoot"
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -163,51 +163,51 @@ func _build_ui() -> void:
 	add_child(root)
 	_root = root
 
-	var tube := _build_tube(root)
-	_build_drop(root, tube)
+	var bar := _build_bar(root)
+	_build_drop(root, bar)
 
 
-# --- The glass tube + liquid + ticks --------------------------------------
-func _build_tube(root: Control) -> Panel:
-	# Glass container: rounded, dark translucent, lighter border.
-	var tube := Panel.new()
-	tube.name = "Tube"
-	tube.clip_contents = true   # clip liquid to the rounded glass shape
-	tube.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# Anchor to the left edge, centered vertically (tube's middle at screen center).
-	tube.anchor_left = 0.0
-	tube.anchor_right = 0.0
-	tube.anchor_top = 0.5
-	tube.anchor_bottom = 0.5
-	tube.offset_left = MARGIN
-	tube.offset_right = MARGIN + TUBE_W
-	tube.offset_top = -TUBE_H * 0.5
-	tube.offset_bottom = TUBE_H * 0.5
+# --- The glass bar + liquid + ticks (horizontal, just above the cards) -----
+func _build_bar(root: Control) -> Panel:
+	# Glass container: rounded, dark translucent, lighter border. Spans the width
+	# (minus the left gap for the drop), pinned a fixed distance above the cards.
+	var bar := Panel.new()
+	bar.name = "Bar"
+	bar.clip_contents = true   # clip liquid to the rounded glass shape
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.anchor_left = 0.0
+	bar.anchor_right = 1.0
+	bar.anchor_top = 1.0
+	bar.anchor_bottom = 1.0
+	bar.offset_left = BAR_LEFT
+	bar.offset_right = -MARGIN
+	bar.offset_bottom = -BAR_BOTTOM
+	bar.offset_top = -BAR_BOTTOM - BAR_H
 
 	var glass := StyleBoxFlat.new()
 	glass.bg_color = COL_GLASS
-	glass.set_corner_radius_all(int(TUBE_W * 0.5))
+	glass.set_corner_radius_all(int(BAR_H * 0.5))
 	glass.set_border_width_all(3)
 	glass.border_color = COL_BORDER
-	tube.add_theme_stylebox_override("panel", glass)
-	root.add_child(tube)
+	bar.add_theme_stylebox_override("panel", glass)
+	root.add_child(bar)
 
-	# LIQUID fill: anchored to the bottom, grows upward via anchor_top.
+	# LIQUID fill: anchored to the LEFT, grows rightward via anchor_right.
 	_fill = Control.new()
 	_fill.name = "Fill"
 	_fill.clip_contents = false
 	_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_fill.anchor_left = 0.0
-	_fill.anchor_right = 1.0
-	_fill.anchor_top = 1.0      # start empty; _set_fill_ratio raises this
+	_fill.anchor_right = 0.0     # start empty; _set_fill_ratio raises this toward 1
+	_fill.anchor_top = 0.0
 	_fill.anchor_bottom = 1.0
 	_fill.offset_left = 0.0
 	_fill.offset_right = 0.0
 	_fill.offset_top = 0.0
 	_fill.offset_bottom = 0.0
-	tube.add_child(_fill)
+	bar.add_child(_fill)
 
-	# Vertical purple gradient body (bright top -> dark bottom).
+	# Vertical purple gradient body (bright top -> dark bottom) for a glossy look.
 	var grad := Gradient.new()
 	grad.set_color(0, COL_BRIGHT)
 	grad.set_color(1, COL_DARK)
@@ -226,50 +226,48 @@ func _build_tube(root: Control) -> Panel:
 	liquid.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_fill.add_child(liquid)
 
-	# Soft vertical gloss stripe down the left side of the liquid.
+	# Soft gloss stripe along the TOP of the liquid.
 	var gloss := ColorRect.new()
 	gloss.name = "Gloss"
 	gloss.color = Color(COL_GLOSS.r, COL_GLOSS.g, COL_GLOSS.b, 0.18)
 	gloss.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	gloss.anchor_left = 0.0
-	gloss.anchor_right = 0.0
+	gloss.anchor_right = 1.0
 	gloss.anchor_top = 0.0
-	gloss.anchor_bottom = 1.0
-	gloss.offset_left = TUBE_W * 0.16
-	gloss.offset_right = TUBE_W * 0.34
-	gloss.offset_top = 0.0
-	gloss.offset_bottom = 0.0
+	gloss.anchor_bottom = 0.0
+	gloss.offset_top = BAR_H * 0.14
+	gloss.offset_bottom = BAR_H * 0.34
 	_fill.add_child(gloss)
 
-	# Bright "surface" line riding the very top of the liquid.
+	# Bright "surface" line riding the RIGHT (front) edge of the liquid.
 	_surface = ColorRect.new()
 	_surface.name = "Surface"
 	_surface.color = Color(COL_GLOSS.r, COL_GLOSS.g, COL_GLOSS.b, 0.7)
 	_surface.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_surface.anchor_left = 0.0
+	_surface.anchor_left = 1.0
 	_surface.anchor_right = 1.0
 	_surface.anchor_top = 0.0
-	_surface.anchor_bottom = 0.0
-	_surface.offset_top = 0.0
-	_surface.offset_bottom = 3.0
+	_surface.anchor_bottom = 1.0
+	_surface.offset_left = -3.0
+	_surface.offset_right = 0.0
 	_fill.add_child(_surface)
 
-	# SEGMENT TICKS: 9 faint lines over the liquid, splitting tube into 10.
+	# SEGMENT TICKS: 9 vertical lines over the liquid, splitting the bar into 10.
 	for i in range(1, SEGMENTS):
 		var tick := ColorRect.new()
 		tick.name = "Tick%d" % i
 		tick.color = Color(1.0, 1.0, 1.0, 0.12)
 		tick.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		tick.anchor_left = 0.0
-		tick.anchor_right = 1.0
-		var y_ratio := float(i) / float(SEGMENTS)   # measured from the top
-		tick.anchor_top = y_ratio
-		tick.anchor_bottom = y_ratio
-		tick.offset_left = 4.0
-		tick.offset_right = -4.0
-		tick.offset_top = -1.0
-		tick.offset_bottom = 1.0
-		tube.add_child(tick)   # drawn over the liquid (added after fill)
+		tick.anchor_top = 0.0
+		tick.anchor_bottom = 1.0
+		var x_ratio := float(i) / float(SEGMENTS)   # measured from the left
+		tick.anchor_left = x_ratio
+		tick.anchor_right = x_ratio
+		tick.offset_left = -1.0
+		tick.offset_right = 1.0
+		tick.offset_top = 4.0
+		tick.offset_bottom = -4.0
+		bar.add_child(tick)   # drawn over the liquid (added after fill)
 
 	# Red flash overlay for the "can't afford" reject feedback (clipped to glass).
 	_red_flash = ColorRect.new()
@@ -277,29 +275,29 @@ func _build_tube(root: Control) -> Panel:
 	_red_flash.color = Color(1.0, 0.15, 0.15, 0.0)
 	_red_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_red_flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	tube.add_child(_red_flash)
+	bar.add_child(_red_flash)
 
-	return tube
+	return bar
 
 
 # --- The elixir drop sprite + number label --------------------------------
-func _build_drop(root: Control, tube: Panel) -> void:
-	# Container pinned just above the tube, centered on the tube's width.
+func _build_drop(root: Control, _bar: Panel) -> void:
+	# The elixir drop sits in the gap to the LEFT of the bar, vertically centered on it.
 	var drop_box := Control.new()
 	drop_box.name = "DropBox"
 	drop_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	drop_box.anchor_left = 0.0
 	drop_box.anchor_right = 0.0
-	drop_box.anchor_top = 0.5
-	drop_box.anchor_bottom = 0.5
-	# Center the drop horizontally over the tube.
-	var center_x := MARGIN + TUBE_W * 0.5
-	drop_box.offset_left = center_x - DROP_SIZE * 0.5
-	drop_box.offset_right = center_x + DROP_SIZE * 0.5
-	# Sit overlapping the top of the (now vertically centered) tube.
-	var drop_top := -TUBE_H * 0.5 - DROP_SIZE * 0.55
-	drop_box.offset_top = drop_top
-	drop_box.offset_bottom = drop_top + DROP_SIZE
+	drop_box.anchor_top = 1.0
+	drop_box.anchor_bottom = 1.0
+	# Horizontally: centered in the gap between the screen margin and the bar's start.
+	var dx := MARGIN + (BAR_LEFT - MARGIN - DROP_SIZE) * 0.5
+	drop_box.offset_left = dx
+	drop_box.offset_right = dx + DROP_SIZE
+	# Vertically: centered on the bar.
+	var bar_center := -(BAR_BOTTOM + BAR_H * 0.5)
+	drop_box.offset_top = bar_center - DROP_SIZE * 0.5
+	drop_box.offset_bottom = bar_center + DROP_SIZE * 0.5
 	root.add_child(drop_box)
 
 

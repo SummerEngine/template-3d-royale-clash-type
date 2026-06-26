@@ -15,7 +15,7 @@ const DEFAULT_LOADOUT := ["giant", "wizard", "barbarian"]
 
 # --- Unlocks / gold --------------------------------------------------------
 const UNLOCK_COST := 100                          # gold to unlock a locked card
-const LOCKED_DEFAULT := ["builder", "bomber", "arrows"]   # cards that start locked
+const LOCKED_DEFAULT := ["builder", "bomber", "arrows", "archer_tower"]   # cards that start locked
 # Meeting-demo reset: on each app launch, relock the default-locked cards and refill
 # gold to DEMO_START_GOLD, so every tester starts fresh and can unlock + try them.
 # Set DEMO_RESET=false to restore the persistent economy (earned coins + permanent
@@ -83,6 +83,37 @@ static func try_unlock(id: String) -> bool:
 	cfg.save(SETTINGS_PATH)
 	return true
 
+# --- Levels / upgrades -----------------------------------------------------
+const UPGRADE_BASE := 100         # gold for level 1->2; scales by current level (100, 200, 300...)
+const LEVEL_STAT_STEP := 0.15     # +15% HP & damage per level above 1
+
+static func get_level(id: String) -> int:
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	return maxi(1, int(cfg.get_value("levels", id, 1)))
+
+# Gold to go from the current level to the next.
+static func upgrade_cost(id: String) -> int:
+	return UPGRADE_BASE * get_level(id)
+
+# Stat multiplier applied to this card's spawned units (1.0 at level 1).
+static func level_multiplier(id: String) -> float:
+	return 1.0 + LEVEL_STAT_STEP * float(get_level(id) - 1)
+
+# Spend gold to raise `id` one level. Returns the NEW level, or 0 if unaffordable.
+static func try_upgrade(id: String) -> int:
+	var cost := upgrade_cost(id)
+	if Profile.get_coins() < cost:
+		return 0
+	Profile.add_coins(-cost)
+	var lvl := get_level(id) + 1
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	cfg.set_value("levels", id, lvl)
+	cfg.save(SETTINGS_PATH)
+	return lvl
+
+
 # Every card the game knows about. Order = collection display order.
 static func all() -> Array:
 	return [
@@ -93,6 +124,7 @@ static func all() -> Array:
 			"script": "res://scripts/barbarian.gd",
 			"flavor": "A reckless brute who charges the nearest enemy and swings until it drops. Cheap, sturdy, and always hungry for a fight.",
 			"stats": [["Role", "Melee"], ["Health", "40"], ["Damage", "8"], ["Hit speed", "1.1s"], ["Move speed", "Medium"]],
+			"level_stats": ["Health", "Damage"],
 		},
 		{
 			"id": "wizard", "name": "Wizard",
@@ -101,6 +133,7 @@ static func all() -> Array:
 			"script": "res://scripts/wizard.gd",
 			"flavor": "Rains fireballs from afar. Devastating at range, but fragile — keep him behind the front line.",
 			"stats": [["Role", "Ranged"], ["Health", "26"], ["Damage", "12"], ["Range", "8"], ["Move speed", "Medium"]],
+			"level_stats": ["Health", "Damage"],
 		},
 		{
 			# Giant: huge, slow, very tanky — only attacks buildings. The card's "scale"
@@ -111,6 +144,7 @@ static func all() -> Array:
 			"script": "res://scripts/giant.gd",
 			"flavor": "A lumbering behemoth that ignores troops entirely and marches straight for your towers. Slow, but nearly unstoppable.",
 			"stats": [["Role", "Tank"], ["Health", "200"], ["Damage", "30"], ["Targets", "Buildings"], ["Move speed", "Slow"]],
+			"level_stats": ["Health", "Damage"],
 		},
 		{
 			# Bomber: fast, fragile suicide unit — jumps and explodes for big AoE.
@@ -120,6 +154,7 @@ static func all() -> Array:
 			"script": "res://scripts/bomber.gd",
 			"flavor": "Sprints in and leaps into a fiery blast that engulfs everything nearby. One use — but what a boom.",
 			"stats": [["Role", "Suicide"], ["Health", "26"], ["Damage", "50 (AoE)"], ["Blast radius", "6.75"], ["Move speed", "Fast"]],
+			"level_stats": ["Health", "Damage"],
 		},
 		{
 			"id": "builder", "name": "Builder", "unlock_cost": 180,
@@ -128,6 +163,7 @@ static func all() -> Array:
 			"script": "res://scripts/builder.gd",
 			"flavor": "Won't throw a punch. Plants elixir pumps to keep your war machine fed — protect him and your economy soars.",
 			"stats": [["Role", "Support"], ["Health", "35"], ["Damage", "—"], ["Builds", "Elixir pumps"], ["Move speed", "Slow"]],
+			"level_stats": ["Health"],
 		},
 		{
 			# Arrows: a targeted SPELL (not a unit). Aimed anywhere on the field; rains
@@ -137,6 +173,28 @@ static func all() -> Array:
 			"kind": "spell", "radius": 4.0, "damage": 32.0,
 			"flavor": "A volley that rains down anywhere on the field, peppering everything in a wide circle. Wipes out swarms and finishes the wounded.",
 			"stats": [["Role", "Spell"], ["Damage", "32 (AoE)"], ["Radius", "4.0"], ["Aim", "Anywhere"]],
+			"level_stats": ["Damage"],
+		},
+		{
+			# Freeze: a targeted SPELL that locks every enemy unit + building in the circle
+			# in a block of ice for a few seconds — they can't move, attack or animate.
+			"id": "freeze", "name": "Freeze",
+			"texture": "res://ui/freeze_button.png", "cost": 4.0, "scale": 1.0,
+			"kind": "spell", "spell_type": "freeze", "radius": 3.5, "freeze_time": 3.5,
+			"flavor": "Encases every enemy troop and building in the circle in solid ice. Stop a push cold, then punish the helpless.",
+			"stats": [["Role", "Spell"], ["Effect", "Freeze"], ["Duration", "3.5s"], ["Radius", "3.5"], ["Aim", "Anywhere"]],
+		},
+		{
+			# Archer Tower: a placeable wooden building (kind "building"). Stands still,
+			# shoots the nearest enemy in range, and slowly rots away.
+			"id": "archer_tower", "name": "Archer Tower", "unlock_cost": 150,
+			"texture": "res://ui/archer_tower_button.png", "cost": 4.0, "scale": 2.6,
+			"kind": "building",
+			"glb": "res://models/archer_tower/archer_tower.glb",
+			"script": "res://scripts/archer_tower.gd",
+			"flavor": "A wooden lookout that rains arrows on nearby enemies. It slowly rots on its own, so it only stands for a while — make it count.",
+			"stats": [["Role", "Building"], ["Health", "80"], ["Damage", "8 / shot"], ["Range", "7"], ["Decays", "2 hp/sec"]],
+			"level_stats": ["Health", "Damage"],
 		},
 	]
 
