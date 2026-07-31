@@ -1,0 +1,42 @@
+{
+  "id": "3d-royale-clash-type",
+  "version": "1.0.2",
+  "name": "3D Royale Clash Arena",
+  "engineMinVersion": "0.5.43",
+  "entryScene": "res://scenes/menu.tscn",
+  "dimension": "3D",
+  "mechanics": [
+    "card-loadout",
+    "drag-and-drop-deployment",
+    "elixir-economy",
+    "auto-battling-units",
+    "melee-and-ranged-units",
+    "buildings",
+    "targeted-spells",
+    "enemy-card-ai",
+    "tower-objectives",
+    "sudden-death",
+    "unit-upgrades",
+    "persistent-unlocks",
+    "mobile-controls"
+  ],
+  "genres": [
+    "auto-battler",
+    "real-time-strategy",
+    "lane-battle",
+    "card-game"
+  ],
+  "agentBrief": "A complete single-player 3D card-deployment arena inspired by lane-based mobile auto battlers. ENTRY: res://scenes/menu.tscn, which provides the menu, audio options, card collection and loadout flow before loading res://scenes/main.tscn. scripts/card_catalog.gd is the single source of truth for units, buildings and spells: card id, UI texture, elixir cost, model, behavior script, unlock price and level-scaled stats live together there. scripts/battle_manager.gd owns the match, player and enemy elixir economies, card deployment, enemy deck AI, bases and princess towers, crown scoring, the timer and sudden death. Units include melee, ranged, tank, bomber and support roles; targeted arrows and freeze spells plus a placeable cannon are also wired. Profile, unlock and loadout state use user://settings.cfg. The project targets the Mobile renderer and includes touch-first drag deployment, but also runs in the desktop editor. Customize by adding catalog entries and unit scripts or by reskinning the arena; preserve the catalog-driven card contract and battle manager ownership rather than adding a parallel deployment system.",
+  "shipsProjectGodot": true,
+  "userFacing": {
+    "tagline": "Build a card loadout, spend elixir and deploy a 3D army against an AI rival.",
+    "highlights": [
+      "Drag-and-drop card deployment backed by a regenerating elixir economy",
+      "Melee, ranged, tank, bomber and support units plus buildings and targeted spells",
+      "Enemy card AI with its own economy, weighted deck and tactical spell placement",
+      "Tower objectives, crown scoring, match timer and sudden-death bombardment",
+      "Persistent card unlocks, upgrades, coins and configurable loadouts",
+      "Touch-first mobile presentation that also runs in the desktop editor"
+    ]
+  }
+}
