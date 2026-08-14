@@ -1,14 +1,14 @@
 [gd_scene format=3 uid="uid://h3g3y4ca6465"]
 
-[ext_resource type="PackedScene" uid="uid://dhmq4yhhniv1" path="res://models/house.glb" id="3_sugp2"]
-[ext_resource type="Script" uid="uid://4t8h8jo34s85" path="res://scripts/base.gd" id="4_base"]
-[ext_resource type="PackedScene" uid="uid://cvm55abb7jl6s" path="res://models/wall_segment.glb" id="4_tbgi4"]
-[ext_resource type="Script" uid="uid://glhujmcqq6xy" path="res://scripts/battle_manager.gd" id="5_mgr"]
-[ext_resource type="PackedScene" uid="uid://nfsdjvi4e1xg" path="res://models/tower.glb" id="5_tefeu"]
-[ext_resource type="Shader" uid="uid://cqg7lgrass8nd" path="res://shaders/grass_ground.gdshader" id="6_grass"]
-[ext_resource type="Script" uid="uid://dufk50ejob1m3" path="res://scripts/princess_tower.gd" id="7_tower"]
-[ext_resource type="PackedScene" uid="uid://b5jkc6ygso036" path="res://models/cr_tower.glb" id="8_crtwr"]
-[ext_resource type="PackedScene" uid="uid://c71mhbmnxxoi" path="res://models/bridge.glb" id="9_bridge"]
+[ext_resource type="PackedScene" path="res://models/house.glb" id="3_sugp2"]
+[ext_resource type="Script" path="res://scripts/base.gd" id="4_base"]
+[ext_resource type="PackedScene" path="res://models/wall_segment.glb" id="4_tbgi4"]
+[ext_resource type="Script" path="res://scripts/battle_manager.gd" id="5_mgr"]
+[ext_resource type="PackedScene" path="res://models/tower.glb" id="5_tefeu"]
+[ext_resource type="Shader" path="res://shaders/grass_ground.gdshader" id="6_grass"]
+[ext_resource type="Script" path="res://scripts/princess_tower.gd" id="7_tower"]
+[ext_resource type="PackedScene" path="res://models/cr_tower.glb" id="8_crtwr"]
+[ext_resource type="PackedScene" path="res://models/bridge.glb" id="9_bridge"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_grass"]
 render_priority = 0

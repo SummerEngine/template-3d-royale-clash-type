@@ -1,9 +1,9 @@
 [gd_scene format=3 uid="uid://yru3ystkjnqg"]
 
-[ext_resource type="Script" uid="uid://da21r1fg40v0l" path="res://scripts/menu.gd" id="1_menu"]
-[ext_resource type="Texture2D" uid="uid://dfiejbgiswq50" path="res://assets/ui/splash.png" id="2_splash"]
-[ext_resource type="Texture2D" uid="uid://cg6lnn5k51m0e" path="res://assets/ui/button_wide.png" id="5_btnw"]
-[ext_resource type="Shader" uid="uid://d3jebslkkyrrw" path="res://shaders/white_key.gdshader" id="6_shader"]
+[ext_resource type="Script" path="res://scripts/menu.gd" id="1_menu"]
+[ext_resource type="Texture2D" path="res://assets/ui/splash.png" id="2_splash"]
+[ext_resource type="Texture2D" path="res://assets/ui/button_wide.png" id="5_btnw"]
+[ext_resource type="Shader" path="res://shaders/white_key.gdshader" id="6_shader"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_key"]
 shader = ExtResource("6_shader")
