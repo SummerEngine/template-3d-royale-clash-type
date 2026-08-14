@@ -212,7 +212,7 @@ static func by_id(id: String) -> Dictionary:
 static func load_loadout() -> Array:
 	var cfg := ConfigFile.new()
 	cfg.load(SETTINGS_PATH)
-	var raw = cfg.get_value("loadout", "cards", null)
+	var raw: Variant = cfg.get_value("loadout", "cards", [])
 	var out: Array = []
 	if raw is Array:
 		for v in raw:
