@@ -10,8 +10,8 @@ config_version=5
 
 [application]
 
-config/name="Royal Clash"
-config/description="A 3D mobile landscape diorama: a Clash of Clans style grassy island with a wandering barbarian."
+config/name="3D Royale Clash Arena"
+config/description="A single-player 3D card-deployment lane battle in the Clash Royale style: build a loadout, spend elixir, deploy units, buildings and spells against an AI rival."
 run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
 boot_splash/show_image=false

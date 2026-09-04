@@ -1,6 +1,6 @@
 {
   "id": "3d-royale-clash-type",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "name": "3D Royale Clash Arena",
   "engineMinVersion": "0.5.43",
   "entryScene": "res://scenes/menu.tscn",

@@ -11,3 +11,6 @@ project.godot.bak
 
 # Raw Meshy rig downloads (already unpacked into models/) — keep them out of history
 Meshy_AI_*.zip
+
+# Dev-only Node helpers in tools/ (npm install to run them); never ship the modules
+node_modules/
