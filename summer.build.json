@@ -1,0 +1,15 @@
+{
+  "schema": "summer.build.v2",
+  "gameId": "game_01M26GJ4XDM98JTTTKCK2G9G4D",
+  "executionMode": "standalone",
+  "targetPlatforms": [
+    "ios"
+  ],
+  "project": {
+    "directory": "."
+  },
+  "client": {
+    "exportPreset": "Summer iOS embedded",
+    "entryPoint": "res://scenes/menu.tscn"
+  }
+}

@@ -17,6 +17,10 @@ config/features=PackedStringArray("4.6", "Mobile")
 boot_splash/show_image=false
 config/icon="res://icon.png"
 
+[autoload]
+
+KeepSkins="*res://scripts/keep_skins.gd"
+
 [display]
 
 window/size/viewport_width=720
