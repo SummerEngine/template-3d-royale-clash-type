@@ -6,6 +6,8 @@ extends Node3D
 @export var max_hp: float = 220.0
 @export var radius: float = 2.772  # soft-collision radius; the battle manager and units read this (3.6 -30% then +10%)
 
+var _appearance = preload("res://scripts/keep_appearance.gd").new()
+
 var hp: float
 var alive: bool = true
 
@@ -17,6 +19,14 @@ const SFX := preload("res://scripts/sfx.gd")
 func _ready() -> void:
 	hp = max_hp
 	_apply_team_tint()
+	if team == 0:
+		_appearance.capture(self)
+		KeepSkins.changed.connect(_apply_skin)
+		_apply_skin()
+
+func _apply_skin() -> void:
+	_appearance.apply(KeepSkins.state.selected)
+
 
 # Tint the house by team at runtime (blue = player, red = enemy). Done in code
 # because instanced-child material overrides in the .tscn don't survive saves.
