@@ -102,6 +102,15 @@ func _ready() -> void:
 	$Buttons.move_child(army, 1)
 	army.pressed.connect(_on_army)
 	_wire_feel(army)
+	var skins = $Buttons/OptionsButton.duplicate(0)
+	skins.name = "SkinsButton"
+	skins.get_node("Label").text = "Skins"
+	$Buttons.add_child(skins)
+	skins.pressed.connect(func():
+		var panel = preload("res://scripts/keep_skins_panel.gd").new()
+		add_child(panel)
+	)
+	_wire_feel(skins)
 	# Apply saved settings before wiring slider signals so we don't re-save on load.
 	_load_settings()
 	music_slider.value_changed.connect(_on_music_changed)
@@ -396,6 +405,10 @@ func _animate_pager_to(target_x: float) -> void:
 # Uses _input (not _unhandled_input) so it works even over Labels/buttons, which block
 # mouse input by default. We never accept_event(), so taps/clicks still work normally.
 func _input(event: InputEvent) -> void:
+	if not get_tree().get_nodes_in_group("keep_skins_modal").is_empty():
+		_swiping = false
+		_swipe_accum = 0.0
+		return
 	if _pager == null or _sliding or _loading or _chest_popup != null:
 		return
 	# Press: start a fresh gesture.

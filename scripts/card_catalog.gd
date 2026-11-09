@@ -209,10 +209,10 @@ static func by_id(id: String) -> Dictionary:
 
 # The 3 chosen card ids in slot order, validated to be known + distinct. Falls back
 # to the default trio if the saved value is missing or malformed.
-static func load_loadout() -> Array:
+static func load_loadout(settings_path: String = SETTINGS_PATH) -> Array:
 	var cfg := ConfigFile.new()
-	cfg.load(SETTINGS_PATH)
-	var raw = cfg.get_value("loadout", "cards", null)
+	cfg.load(settings_path)
+	var raw = cfg.get_value("loadout", "cards", [])
 	var out: Array = []
 	if raw is Array:
 		for v in raw:
